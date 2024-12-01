@@ -1,46 +1,53 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import Navbar from '../components/Navbar'
+import { useEffect, useState } from 'react';
+import Navbar from '../components/Navbar';
 
-interface DataFile {
-  filename: string
-  uploadDate: string
-  fileType: string
-  url: string
+interface S3File {
+  filename: string;
+  folder: string;
+  uploadDate: string;
+  size: number;
+  url: string;
 }
 
-function DataView() {
-  const [files, setFiles] = useState<DataFile[]>([])
-  const [loading, setLoading] = useState(true)
+export default function DataView() {
+  const [files, setFiles] = useState<S3File[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // TODO: Implement API call to fetch files
-    // This is a mock implementation
-    setFiles([
-      {
-        filename: 'INSAT3D_L1B_2024_01.h5',
-        uploadDate: '2024-01-15',
-        fileType: 'L1B',
-        url: 'https://raw-insat-data.s3.example.com/L1B/file1.h5'
-      },
-      // Add more mock data as needed
-    ])
-    setLoading(false)
-  }, [])
+    // Fetch the JSON file directly from public folder
+    fetch('/s3_files.json')
+      .then(response => response.json())
+      .then(data => {
+        setFiles(data.files || []);
+        setLoading(false);
+      })
+      .catch(error => {
+        console.error('Error loading files:', error);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen">
+        <Navbar />
+        <div className="flex justify-center items-center h-[calc(100vh-64px)]">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-gray-100">
       <Navbar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">INSAT Data Files</h1>
+        <h1 className="text-2xl font-bold mb-6">S3 Bucket Files</h1>
         
-        {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-          </div>
-        ) : (
-          <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+        {files.length > 0 ? (
+          <div className="bg-white shadow overflow-hidden rounded-lg">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -48,10 +55,13 @@ function DataView() {
                     Filename
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Folder
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Upload Date
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
+                    Size
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -60,35 +70,46 @@ function DataView() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {files.map((file, index) => (
-                  <tr key={index}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {file.filename}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                        ${file.folder === 'L1B' ? 'bg-blue-100 text-blue-800' :
+                          file.folder === 'L1C' ? 'bg-green-100 text-green-800' :
+                          file.folder === 'L2B' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-purple-100 text-purple-800'}`}>
+                        {file.folder}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {file.uploadDate}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
-                        {file.fileType}
-                      </span>
-                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <button 
-                        onClick={() => window.open(file.url, '_blank')}
-                        className="text-indigo-600 hover:text-indigo-900"
+                      {(file.size / 1024 / 1024).toFixed(2)} MB
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <a
+                        href={file.url}
+                        className="text-blue-600 hover:text-blue-900"
+                        target="_blank"
+                        rel="noopener noreferrer"
                       >
                         Download
-                      </button>
+                      </a>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        ) : (
+          <div className="bg-white shadow rounded-lg p-6 text-center text-gray-500">
+            No files found in the bucket.
+          </div>
         )}
       </div>
     </div>
-  )
+  );
 }
-
-export default DataView
