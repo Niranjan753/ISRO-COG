@@ -22,10 +22,16 @@ export default function Navbar() {
                 Admin
               </Link>
               <Link
-                href="/visualizer"
+                href="/data-view"
                 className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >
                 Visualizer
+              </Link>
+              <Link
+                href="/data-view"
+                className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+              >
+                Data View
               </Link>
               <Link
                 href="/about"
