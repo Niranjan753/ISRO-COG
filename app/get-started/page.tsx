@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import DataAccess from './data-access/page'
+import Navbar from '../components/Navbar'
 
 const GetStartedPage = () => {
   const [mounted, setMounted] = useState(false)
@@ -20,6 +21,7 @@ const GetStartedPage = () => {
 
   return (
     <div className="min-h-screen bg-white">
+      <Navbar />
       {/* Header Section */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

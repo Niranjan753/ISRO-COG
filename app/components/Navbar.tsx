@@ -22,7 +22,7 @@ export default function Navbar() {
                 Admin
               </Link>
               <Link
-                href="/data-view"
+                href="/visualizer"
                 className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >
                 Visualizer
@@ -43,11 +43,12 @@ export default function Navbar() {
           </div>
 
           <div className="flex items-center">
-            <button
+            <Link
+              href="/get-started"
               className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors"
             >
-              Get Started
-            </button>
+              Get Started here
+            </Link>
             
           </div>
         </div>
