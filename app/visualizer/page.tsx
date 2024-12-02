@@ -5,80 +5,122 @@ import mapboxgl from 'mapbox-gl'
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css'
 import MapboxDraw from '@mapbox/mapbox-gl-draw'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import * as GeoTIFF from 'geotiff'
 import Navbar from '../components/Navbar'
+import FileList from '../components/FileList'
+import { useSearchParams } from 'next/navigation'
 
 export default function Globe() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const draw = useRef<MapboxDraw | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
   const [selectedArea, setSelectedArea] = useState<any>(null)
   const [isGlobeView, setIsGlobeView] = useState(false)
   const [isMercator, setIsMercator] = useState(false)
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const searchParams = useSearchParams()
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!map.current || !searchQuery) return
+  useEffect(() => {
+    const files = searchParams.get('files')
+    if (files) {
+      setSelectedFiles(files.split(','))
+    }
+  }, [searchParams])
+
+  const handleTiffUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !map.current) return
+
+    setError(null)
 
     try {
-      // Use Mapbox Geocoding API to search for the location
-      const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(searchQuery)}.json?access_token=${mapboxgl.accessToken}&types=country,region,district,place`
-      )
-      const data = await response.json()
-
-      if (data.features && data.features.length > 0) {
-        const feature = data.features[0]
-
-        // Remove existing layers and sources
-        if (map.current.getLayer('region-fill')) {
-          map.current.removeLayer('region-fill')
-        }
-        if (map.current.getLayer('region-border')) {
-          map.current.removeLayer('region-border')
-        }
-        if (map.current.getSource('region')) {
-          map.current.removeSource('region')
-        }
-
-        // Add the region boundary source and layers
-        map.current.addSource('region', {
-          type: 'geojson',
-          data: feature
-        })
-
-        // Add fill layer
-        map.current.addLayer({
-          id: 'region-fill',
-          type: 'fill',
-          source: 'region',
-          paint: {
-            'fill-color': '#FF0000',
-            'fill-opacity': 0.2
-          }
-        })
-
-        // Add border layer
-        map.current.addLayer({
-          id: 'region-border',
-          type: 'line',
-          source: 'region',
-          paint: {
-            'line-color': '#FF0000',
-            'line-width': 2
-          }
-        })
-
-        // Fit map to the region bounds
-        const bounds = new mapboxgl.LngLatBounds()
-        feature.bbox ? 
-          bounds.extend([feature.bbox[0], feature.bbox[1]]).extend([feature.bbox[2], feature.bbox[3]]) :
-          feature.geometry.coordinates[0].forEach((coord: number[]) => bounds.extend(coord))
-        
-        map.current.fitBounds(bounds, { padding: 50 })
+      // Remove existing TIFF layer and source if they exist
+      if (map.current.getLayer('tiff-layer')) {
+        map.current.removeLayer('tiff-layer')
       }
+      if (map.current.getSource('tiff-overlay')) {
+        map.current.removeSource('tiff-overlay')
+      }
+
+      // Read the file as ArrayBuffer
+      const arrayBuffer = await file.arrayBuffer()
+      
+      // Parse the TIFF file
+      const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer)
+      const image = await tiff.getImage()
+      
+      // Get the geographic bounds of the image
+      const bbox = image.getBoundingBox()
+
+      // Create a canvas and draw the TIFF data
+      const canvas = document.createElement('canvas')
+      const width = image.getWidth()
+      const height = image.getHeight()
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Could not get canvas context')
+
+      const rasterData = await image.readRasters()
+      const imageData = ctx.createImageData(width, height)
+      
+      // Assuming single band grayscale data
+      for (let i = 0; i < rasterData[0].length; i++) {
+        const value = rasterData[0][i]
+        imageData.data[i * 4] = value     // R
+        imageData.data[i * 4 + 1] = value // G
+        imageData.data[i * 4 + 2] = value // B
+        imageData.data[i * 4 + 3] = 255   // A
+      }
+      
+      ctx.putImageData(imageData, 0, 0)
+      
+      // Convert canvas to blob
+      const blob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob)
+        }, 'image/png')
+      })
+      
+      // Add the converted image as a raster source
+      map.current.addSource('tiff-overlay', {
+        type: 'image',
+        url: URL.createObjectURL(blob),
+        coordinates: [
+          [bbox[0], bbox[3]], // top-left
+          [bbox[2], bbox[3]], // top-right
+          [bbox[2], bbox[1]], // bottom-right
+          [bbox[0], bbox[1]]  // bottom-left
+        ]
+      })
+
+      // Add a raster layer to display the TIFF
+      map.current.addLayer({
+        id: 'tiff-layer',
+        type: 'raster',
+        source: 'tiff-overlay',
+        paint: {
+          'raster-opacity': 0.7,
+          'raster-resampling': 'nearest'
+        }
+      })
+
+      // Fly to the TIFF location
+      map.current.fitBounds([
+        [bbox[0], bbox[1]], // southwestern corner
+        [bbox[2], bbox[3]]  // northeastern corner
+      ], {
+        padding: 50
+      })
+
     } catch (error) {
-      console.error('Error searching location:', error)
+      let errorMessage = 'Failed to process TIFF file'
+      if (error instanceof Error) {
+        errorMessage = error.message
+      }
+      setError(errorMessage)
+      console.error('Error handling TIFF:', error)
     }
   }
 
@@ -109,7 +151,8 @@ export default function Globe() {
       style: 'mapbox://styles/mapbox/satellite-v9',
       center: [0, 20],
       zoom: 2,
-      projection: 'globe'
+      projection: 'globe',
+      renderWorldCopies: true
     })
 
     draw.current = new MapboxDraw({
@@ -127,7 +170,7 @@ export default function Globe() {
     map.current.addControl(new mapboxgl.FullscreenControl())
     map.current.addControl(new mapboxgl.ScaleControl())
 
-    map.current.on('draw.create', (e) => {
+    map.current.on('draw.create', (e: { features: any[] }) => {
       setSelectedArea(e.features[0])
     })
 
@@ -135,105 +178,51 @@ export default function Globe() {
   }, [])
 
   return (
-    <>
-    <Navbar />
-    <div style={{ 
-      width: '100%', 
-      height: '100vh',
-      position: 'relative'
-    }}>
-      <div style={{
-        position: 'absolute',
-        top: '20px',
-        left: '20px',
-        zIndex: 1,
-        background: 'rgba(255, 255, 255, 0.9)',
-        padding: '10px',
-        borderRadius: '4px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px',
-        color: 'black',
-        width: '300px'
-      }}>
-        <form onSubmit={handleSearch}>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search location (e.g., India)"
-            style={{
-              width: '100%',
-              padding: '8px',
-              borderRadius: '4px',
-              border: '1px solid #ccc',
-              marginBottom: '8px'
-            }}
-          />
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button
-              type="submit"
-              style={{
-                flex: 1,
-                padding: '8px',
-                backgroundColor: '#4a90e2',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }}
-            >
-              Search
-            </button>
-            <button
-              type="button"
-              onClick={toggleView}
-              style={{
-                flex: 1,
-                padding: '8px',
-                backgroundColor: '#4a90e2',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }}
-            >
-              {isGlobeView ? 'Map View' : 'Globe View'}
-            </button>
-            <button
-              type="button"
-              onClick={toggleProjection}
-              style={{
-                flex: 1,
-                padding: '8px',
-                backgroundColor: '#4a90e2',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }}
-            >
-              {isMercator ? 'Globe View' : 'Mercator View'}
-            </button>
+    <div className="flex flex-col h-screen bg-white">
+      <Navbar />
+      <div className="flex flex-1">
+        <div className="w-1/3 p-4">
+          <FileList selectedFiles={selectedFiles} />
+          <div className="mt-4 p-4 bg-white rounded-lg shadow">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900">Upload TIFF</h2>
+            <input
+              type="file"
+              accept=".tif,.tiff"
+              onChange={handleTiffUpload}
+              className="w-full p-2 border border-gray-200 rounded"
+            />
+            {error && (
+              <div className="mt-2 p-2 bg-red-100 border border-red-400 text-red-700 rounded">
+                {error}
+              </div>
+            )}
           </div>
-        </form>
+        </div>
+        <div className="w-2/3 relative">
+          <div className="absolute top-5 left-5 z-10 bg-white/90 p-4 rounded-lg shadow-xl w-[300px] drop-shadow-lg">
+            <div className="flex gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={toggleView}
+                className="flex-1 py-2 px-4 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors font-semibold shadow-sm"
+              >
+                {isGlobeView ? 'Map View' : 'Globe View'}
+              </button>
+              <button
+                type="button"
+                onClick={toggleProjection}
+                className="flex-1 py-2 px-4 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors font-semibold shadow-sm"
+              >
+                {isMercator ? 'Globe View' : 'Mercator View'}
+              </button>
+            </div>
+          </div>
+          <div 
+            ref={mapContainer} 
+            className="w-full h-full"
+          />
+        </div>
       </div>
-      <div 
-        ref={mapContainer} 
-        style={{ 
-          width: '100%',
-          height: '100%',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          zIndex: 0
-        }}
-      />
     </div>
-    </>
   )
 }
