@@ -9,16 +9,26 @@ import * as GeoTIFF from 'geotiff'
 import Navbar from '../components/Navbar'
 import FileList from '../components/FileList'
 import { useSearchParams } from 'next/navigation'
+import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder'
+import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css'
+
+type TiffData = {
+  min: number
+  max: number 
+  values: number[]
+}
 
 export default function Globe() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const draw = useRef<MapboxDraw | null>(null)
+  const geocoder = useRef<MapboxGeocoder | null>(null)
   const [selectedArea, setSelectedArea] = useState<any>(null)
   const [isGlobeView, setIsGlobeView] = useState(false)
   const [isMercator, setIsMercator] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [tiffData, setTiffData] = useState<TiffData>()
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -30,98 +40,232 @@ export default function Globe() {
 
   const handleTiffUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !map.current) return
+    if (!file || !map.current) {
+      setError('No file selected or map not initialized')
+      return
+    }
 
     setError(null)
 
     try {
-      // Remove existing TIFF layer and source if they exist
-      if (map.current.getLayer('tiff-layer')) {
-        map.current.removeLayer('tiff-layer')
-      }
-      if (map.current.getSource('tiff-overlay')) {
-        map.current.removeSource('tiff-overlay')
-      }
-
-      // Read the file as ArrayBuffer
-      const arrayBuffer = await file.arrayBuffer()
-      
-      // Parse the TIFF file
-      const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer)
-      const image = await tiff.getImage()
-      
-      // Get the geographic bounds of the image
-      const bbox = image.getBoundingBox()
-
-      // Create a canvas and draw the TIFF data
-      const canvas = document.createElement('canvas')
-      const width = image.getWidth()
-      const height = image.getHeight()
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d')
-      if (!ctx) throw new Error('Could not get canvas context')
-
-      const rasterData = await image.readRasters()
-      const imageData = ctx.createImageData(width, height)
-      
-      // Assuming single band grayscale data
-      for (let i = 0; i < rasterData[0].length; i++) {
-        const value = rasterData[0][i]
-        imageData.data[i * 4] = value     // R
-        imageData.data[i * 4 + 1] = value // G
-        imageData.data[i * 4 + 2] = value // B
-        imageData.data[i * 4 + 3] = 255   // A
-      }
-      
-      ctx.putImageData(imageData, 0, 0)
-      
-      // Convert canvas to blob
-      const blob = await new Promise<Blob>((resolve) => {
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob)
-        }, 'image/png')
-      })
-      
-      // Add the converted image as a raster source
-      map.current.addSource('tiff-overlay', {
-        type: 'image',
-        url: URL.createObjectURL(blob),
-        coordinates: [
-          [bbox[0], bbox[3]], // top-left
-          [bbox[2], bbox[3]], // top-right
-          [bbox[2], bbox[1]], // bottom-right
-          [bbox[0], bbox[1]]  // bottom-left
-        ]
-      })
-
-      // Add a raster layer to display the TIFF
-      map.current.addLayer({
-        id: 'tiff-layer',
-        type: 'raster',
-        source: 'tiff-overlay',
-        paint: {
-          'raster-opacity': 0.7,
-          'raster-resampling': 'nearest'
+      // Clean up existing layers with a safe method
+      const cleanup = () => {
+        try {
+          if (map.current?.getLayer('tiff-layer')) {
+            map.current.removeLayer('tiff-layer')
+          }
+          if (map.current?.getSource('tiff-overlay')) {
+            map.current.removeSource('tiff-overlay')
+          }
+        } catch (cleanupErr) {
+          console.warn('Error during cleanup:', cleanupErr)
         }
-      })
-
-      // Fly to the TIFF location
-      map.current.fitBounds([
-        [bbox[0], bbox[1]], // southwestern corner
-        [bbox[2], bbox[3]]  // northeastern corner
-      ], {
-        padding: 50
-      })
-
-    } catch (error) {
-      let errorMessage = 'Failed to process TIFF file'
-      if (error instanceof Error) {
-        errorMessage = error.message
       }
+      cleanup()
+
+      // Read file in chunks to prevent memory issues
+      const chunkSize = 10 * 1024 * 1024 // 10MB chunks
+      const fileReader = new FileReader()
+      const chunks: ArrayBuffer[] = []
+      
+      let offset = 0
+      
+      const readNextChunk = () => {
+        const slice = file.slice(offset, offset + chunkSize)
+        fileReader.readAsArrayBuffer(slice)
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        fileReader.onload = async (e) => {
+          if (e.target?.result instanceof ArrayBuffer) {
+            chunks.push(e.target.result)
+            offset += chunkSize
+            
+            if (offset < file.size) {
+              readNextChunk()
+            } else {
+              try {
+                // Combine chunks
+                const fullBuffer = new Uint8Array(file.size)
+                let position = 0
+                chunks.forEach(chunk => {
+                  fullBuffer.set(new Uint8Array(chunk), position)
+                  position += chunk.byteLength
+                })
+
+                const tiff = await GeoTIFF.fromArrayBuffer(fullBuffer.buffer)
+                const image = await tiff.getImage()
+                const bbox = image.getBoundingBox()
+                
+                if (!bbox) {
+                  throw new Error('Invalid bounding box in TIFF file')
+                }
+
+                const width = image.getWidth()
+                const height = image.getHeight()
+                
+                // Read data in smaller chunks
+                const tileWidth = 256
+                const tileHeight = 256
+                
+                const numTilesX = Math.ceil(width / tileWidth)
+                const numTilesY = Math.ceil(height / tileHeight)
+                
+                let min = Infinity
+                let max = -Infinity
+                const values: number[] = []
+
+                // Process tiles
+                for (let ty = 0; ty < numTilesY; ty++) {
+                  for (let tx = 0; tx < numTilesX; tx++) {
+                    const x = tx * tileWidth
+                    const y = ty * tileHeight
+                    const w = Math.min(tileWidth, width - x)
+                    const h = Math.min(tileHeight, height - y)
+
+                    const tileData = await image.readRasters({
+                      window: [x, y, x + w, y + h],
+                      width: w,
+                      height: h
+                    })
+
+                    const data = tileData[0] as Float32Array | Uint16Array | Uint8Array
+                    
+                    // Sample data from tile
+                    const stride = Math.max(1, Math.floor(data.length / 100))
+                    for (let i = 0; i < data.length; i += stride) {
+                      const value = data[i]
+                      values.push(value)
+                      min = Math.min(min, value)
+                      max = Math.max(max, value)
+                    }
+                  }
+                }
+
+                setTiffData({ min, max, values })
+
+                // Create visualization
+                const canvas = document.createElement('canvas')
+                canvas.width = width
+                canvas.height = height
+                const ctx = canvas.getContext('2d')
+                
+                if (!ctx) {
+                  throw new Error('Could not create canvas context')
+                }
+
+                const imageData = ctx.createImageData(width, height)
+                
+                // Enhanced color mapping with transparency for globe visualization
+                const rasterData = await image.readRasters()
+                const data = rasterData[0] as Float32Array | Uint16Array | Uint8Array
+
+                for (let i = 0; i < data.length; i++) {
+                  const value = data[i]
+                  const normalizedValue = (value - min) / (max - min)
+                  const hue = (1 - normalizedValue) * 240 // Blue to Red
+                  const [r, g, b] = hslToRgb(hue / 360, 1, 0.5)
+                  
+                  // Add alpha based on value intensity
+                  const alpha = Math.round(normalizedValue * 255)
+                  
+                  imageData.data[i * 4] = r
+                  imageData.data[i * 4 + 1] = g
+                  imageData.data[i * 4 + 2] = b
+                  imageData.data[i * 4 + 3] = alpha
+                }
+
+                ctx.putImageData(imageData, 0, 0)
+                const dataUrl = canvas.toDataURL('image/png')
+
+                // Ensure map is loaded
+                if (!map.current?.loaded()) {
+                  await new Promise<void>((loadResolve) => {
+                    map.current?.on('load', () => loadResolve())
+                  })
+                }
+
+                // Add to map with enhanced 3D visualization
+                if (map.current) {
+                  map.current.addSource('tiff-overlay', {
+                    type: 'image',
+                    url: dataUrl,
+                    coordinates: [
+                      [bbox[0], bbox[3]],
+                      [bbox[2], bbox[3]],
+                      [bbox[2], bbox[1]],
+                      [bbox[0], bbox[1]]
+                    ]
+                  })
+
+                  map.current.addLayer({
+                    id: 'tiff-layer',
+                    type: 'raster',
+                    source: 'tiff-overlay',
+                    paint: {
+                      'raster-opacity': 0.8,
+                      'raster-resampling': 'linear',
+                      'raster-fade-duration': 0
+                    }
+                  })
+
+                  // Set appropriate view
+                  map.current.setProjection('globe')
+                  map.current.fitBounds([
+                    [bbox[0], bbox[1]],
+                    [bbox[2], bbox[3]]
+                  ] as mapboxgl.LngLatBoundsLike, {
+                    padding: 50,
+                    maxZoom: 16
+                  })
+                }
+
+                resolve()
+              } catch (err) {
+                reject(err)
+              }
+            }
+          }
+        }
+
+        fileReader.onerror = () => reject(fileReader.error)
+        readNextChunk()
+      })
+
+    } catch (err) {
+      const errorMessage = err instanceof Error 
+        ? `TIFF Processing Error: ${err.message}` 
+        : 'Failed to process TIFF file'
+      
+      console.error('TIFF error:', errorMessage)
       setError(errorMessage)
-      console.error('Error handling TIFF:', error)
     }
+  }
+
+  // Helper function to convert HSL to RGB
+  function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+    let r, g, b;
+
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const hue2rgb = (p: number, q: number, t: number) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      }
+
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
   }
 
   const toggleView = () => {
@@ -142,39 +286,70 @@ export default function Globe() {
   useEffect(() => {
     if (!mapContainer.current) return
     
-    mapboxgl.accessToken = 'pk.eyJ1IjoibmluamE3NTMiLCJhIjoiY200NmkybHJ0MGcwbTJsczYzbGUxOXFmNyJ9.KjIDZ-igeB6lVz0c4FqVug'
+    try {
+      mapboxgl.accessToken = 'pk.eyJ1IjoibmluamE3NTMiLCJhIjoiY200ODF5M2xlMGR6bzJqc2QyaWZsNWJzcCJ9.x3C_qjPWpW1GUyL5R16Q1A'
 
-    if (map.current) return
+      if (map.current) return
 
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/satellite-v9',
-      center: [0, 20],
-      zoom: 2,
-      projection: 'globe',
-      renderWorldCopies: true
-    })
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/satellite-v9',
+        center: [0, 20],
+        zoom: 2,
+        projection: 'globe',
+        renderWorldCopies: true
+      })
 
-    draw.current = new MapboxDraw({
-      displayControlsDefault: false,
-      controls: {
-        polygon: true,
-        trash: true,
-        point: true,
-        line_string: true
-      }
-    })
+      // Initialize geocoder
+      geocoder.current = new MapboxGeocoder({
+        accessToken: mapboxgl.accessToken,
+        mapboxgl: mapboxgl,
+        marker: false,
+        placeholder: 'Search for a location...',
+        proximity: {
+          longitude: 0,
+          latitude: 20
+        }
+      })
 
-    map.current.addControl(draw.current)
-    map.current.addControl(new mapboxgl.NavigationControl())
-    map.current.addControl(new mapboxgl.FullscreenControl())
-    map.current.addControl(new mapboxgl.ScaleControl())
+      // Add geocoder to map
+      map.current.addControl(geocoder.current)
 
-    map.current.on('draw.create', (e: { features: any[] }) => {
-      setSelectedArea(e.features[0])
-    })
+      // Initialize draw controls
+      draw.current = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: {
+          polygon: true,
+          trash: true,
+          point: true,
+          line_string: true
+        }
+      })
 
-    return () => map.current?.remove()
+      map.current.addControl(draw.current)
+      map.current.addControl(new mapboxgl.NavigationControl())
+      map.current.addControl(new mapboxgl.FullscreenControl())
+      map.current.addControl(new mapboxgl.ScaleControl())
+
+      map.current.on('draw.create', (e: { features: any[] }) => {
+        setSelectedArea(e.features[0])
+      })
+
+      // Error handling for map load
+      map.current.on('error', (e) => {
+        console.error('Map error:', e)
+        setError('Map loading error')
+      })
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to initialize map'
+      setError(errorMessage)
+      console.error('Map initialization error:', err instanceof Error ? err.message : err)
+    }
+
+    return () => {
+      map.current?.remove()
+    }
   }, [])
 
   return (
@@ -194,6 +369,19 @@ export default function Globe() {
             {error && (
               <div className="mt-2 p-2 bg-red-100 border border-red-400 text-red-700 rounded">
                 {error}
+              </div>
+            )}
+            {tiffData && (
+              <div className="mt-4">
+                <h3 className="font-semibold">Data Statistics:</h3>
+                <p>Min Value: {tiffData.min.toFixed(2)}</p>
+                <p>Max Value: {tiffData.max.toFixed(2)}</p>
+                <div className="mt-2 h-4 bg-gradient-to-r from-blue-500 via-green-500 to-red-500 rounded" />
+                <div className="flex justify-between text-sm">
+                  <span>{tiffData.min.toFixed(2)}</span>
+                  <span>{((tiffData.max + tiffData.min) / 2).toFixed(2)}</span>
+                  <span>{tiffData.max.toFixed(2)}</span>
+                </div>
               </div>
             )}
           </div>
