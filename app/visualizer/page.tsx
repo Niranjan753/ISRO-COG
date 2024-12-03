@@ -14,8 +14,12 @@ import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css'
 
 type TiffData = {
   min: number
-  max: number 
+  max: number
   values: number[]
+  width: number
+  height: number
+  bbox: number[]
+  center: [number, number]
 }
 
 export default function Globe() {
@@ -29,6 +33,7 @@ export default function Globe() {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [tiffData, setTiffData] = useState<TiffData>()
+  const [currentCoords, setCurrentCoords] = useState<[number, number]>([0, 0])
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -142,7 +147,19 @@ export default function Globe() {
                   }
                 }
 
-                setTiffData({ min, max, values })
+                // Calculate center coordinates
+                const centerLng = (bbox[0] + bbox[2]) / 2
+                const centerLat = (bbox[1] + bbox[3]) / 2
+
+                setTiffData({ 
+                  min, 
+                  max, 
+                  values,
+                  width,
+                  height,
+                  bbox,
+                  center: [centerLng, centerLat]
+                })
 
                 // Create visualization
                 const canvas = document.createElement('canvas')
@@ -218,6 +235,11 @@ export default function Globe() {
                     padding: 50,
                     maxZoom: 16
                   })
+
+                  // Track mouse movement for coordinates
+                  map.current.on('mousemove', (e) => {
+                    setCurrentCoords([e.lngLat.lng, e.lngLat.lat])
+                  })
                 }
 
                 resolve()
@@ -234,7 +256,7 @@ export default function Globe() {
 
     } catch (err) {
       const errorMessage = err instanceof Error 
-        ? `TIFF Processing Error: ${err.message}` 
+        ? `TIFF Processing Error: ${err.message}`
         : 'Failed to process TIFF file'
       
       console.error('TIFF error:', errorMessage)
@@ -353,10 +375,10 @@ export default function Globe() {
   }, [])
 
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex flex-col h-screen bg-white overflow-hidden">
       <Navbar />
-      <div className="flex flex-1">
-        <div className="w-1/3 p-4">
+      <div className="flex flex-1 overflow-hidden">
+        <div className="w-1/3 p-4 overflow-y-auto">
           <FileList selectedFiles={selectedFiles} />
           <div className="mt-4 p-4 bg-white rounded-lg shadow">
             <h2 className="text-xl font-semibold mb-4 text-gray-900">Upload TIFF</h2>
@@ -372,34 +394,51 @@ export default function Globe() {
               </div>
             )}
             {tiffData && (
-              <div className="mt-4">
-                <h3 className="font-semibold">Data Statistics:</h3>
-                <p>Min Value: {tiffData.min.toFixed(2)}</p>
-                <p>Max Value: {tiffData.max.toFixed(2)}</p>
-                <div className="mt-2 h-4 bg-gradient-to-r from-blue-500 via-green-500 to-red-500 rounded" />
-                <div className="flex justify-between text-sm">
-                  <span>{tiffData.min.toFixed(2)}</span>
-                  <span>{((tiffData.max + tiffData.min) / 2).toFixed(2)}</span>
-                  <span>{tiffData.max.toFixed(2)}</span>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <h3 className="font-semibold text-black">Data Statistics:</h3>
+                  <p className="text-black">Min Value: {tiffData.min.toFixed(2)}</p>
+                  <p className="text-black">Max Value: {tiffData.max.toFixed(2)}</p>
+                  <div className="mt-2 h-4 bg-gradient-to-r from-blue-500 via-green-500 to-red-500 rounded" />
+                  <div className="flex justify-between text-sm text-black">
+                    <span>{tiffData.min.toFixed(2)}</span>
+                    <span>{((tiffData.max + tiffData.min) / 2).toFixed(2)}</span>
+                    <span>{tiffData.max.toFixed(2)}</span>
+                  </div>
+                </div>
+                
+                <div>
+                  <h3 className="font-semibold text-black">Image Details:</h3>
+                  <p className="text-black">Dimensions: {tiffData.width} x {tiffData.height} pixels</p>
+                  <p className="text-black">Center: {tiffData.center[0].toFixed(4)}°, {tiffData.center[1].toFixed(4)}°</p>
+                  <p className="text-black">Current Mouse Position: {currentCoords[0].toFixed(4)}°, {currentCoords[1].toFixed(4)}°</p>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold text-black">Bounding Box:</h3>
+                  <p className="text-black">West: {tiffData.bbox[0].toFixed(4)}°</p>
+                  <p className="text-black">South: {tiffData.bbox[1].toFixed(4)}°</p>
+                  <p className="text-black">East: {tiffData.bbox[2].toFixed(4)}°</p>
+                  <p className="text-black">North: {tiffData.bbox[3].toFixed(4)}°</p>
                 </div>
               </div>
             )}
           </div>
         </div>
-        <div className="w-2/3 relative">
-          <div className="absolute top-5 left-5 z-10 bg-white/90 p-4 rounded-lg shadow-xl w-[300px] drop-shadow-lg">
-            <div className="flex gap-2 flex-wrap">
+        <div className="w-2/3 relative overflow-hidden">
+          <div className="absolute top-5 left-5 z-10 bg-white/90 p-3 rounded-lg shadow-xl drop-shadow-lg">
+            <div className="flex gap-2">
               <button
                 type="button"
                 onClick={toggleView}
-                className="flex-1 py-2 px-4 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors font-semibold shadow-sm"
+                className="px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-sm font-semibold shadow-sm"
               >
                 {isGlobeView ? 'Map View' : 'Globe View'}
               </button>
               <button
                 type="button"
                 onClick={toggleProjection}
-                className="flex-1 py-2 px-4 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors font-semibold shadow-sm"
+                className="px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-sm font-semibold shadow-sm"
               >
                 {isMercator ? 'Globe View' : 'Mercator View'}
               </button>
