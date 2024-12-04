@@ -20,6 +20,7 @@ type TiffData = {
   height: number
   bbox: number[]
   center: [number, number]
+  originalData?: Float32Array | Uint16Array | Uint8Array
 }
 
 type ColorScheme = 'rainbow' | 'thermal' | 'grayscale' | 'terrain'
@@ -87,6 +88,7 @@ export default function Globe() {
   const [currentCoords, setCurrentCoords] = useState<[number, number]>([0, 0])
   const [colorScheme, setColorScheme] = useState<ColorScheme>('rainbow')
   const [contrast, setContrast] = useState(1)
+  const [selectedBounds, setSelectedBounds] = useState<number[] | null>(null)
   const searchParams = useSearchParams()
 
   const toggleView = () => {
@@ -104,7 +106,92 @@ export default function Globe() {
     map.current.setProjection(isMercator ? 'globe' : 'mercator')
   }
 
-  // ... rest of your existing useEffect hooks ...
+  const downloadSelectedArea = async () => {
+    if (!selectedBounds || !tiffData || !tiffData.originalData) {
+      setError('Please select an area first and ensure TIFF data is loaded')
+      return
+    }
+
+    try {
+      // Calculate pixel bounds from geographic bounds
+      const [minX, minY, maxX, maxY] = selectedBounds
+      const [dataMinX, dataMinY, dataMaxX, dataMaxY] = tiffData.bbox
+      
+      // Convert geographic coordinates to pixel coordinates
+      const xScale = tiffData.width / (dataMaxX - dataMinX)
+      const yScale = tiffData.height / (dataMaxY - dataMinY)
+      
+      const pixelMinX = Math.max(0, Math.floor((minX - dataMinX) * xScale))
+      const pixelMaxX = Math.min(tiffData.width, Math.ceil((maxX - dataMinX) * xScale))
+      const pixelMinY = Math.max(0, Math.floor((dataMaxY - maxY) * yScale))
+      const pixelMaxY = Math.min(tiffData.height, Math.ceil((dataMaxY - minY) * yScale))
+      
+      const width = pixelMaxX - pixelMinX
+      const height = pixelMaxY - pixelMinY
+
+      // Extract data for selected region
+      const selectedData = new Float32Array(width * height)
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const srcIdx = (pixelMinY + y) * tiffData.width + (pixelMinX + x)
+          const dstIdx = y * width + x
+          selectedData[dstIdx] = tiffData.originalData[srcIdx]
+        }
+      }
+
+      // Create visualization
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Could not create canvas context')
+
+      const imageData = ctx.createImageData(width, height)
+      
+      // Apply current color scheme and contrast
+      for (let i = 0; i < selectedData.length; i++) {
+        const value = selectedData[i]
+        const normalizedValue = Math.min(1, Math.max(0,
+          ((value - tiffData.min) / (tiffData.max - tiffData.min)) * contrast
+        ))
+
+        const [r, g, b] = COLOR_SCHEMES[colorScheme](normalizedValue)
+        
+        imageData.data[i * 4] = r
+        imageData.data[i * 4 + 1] = g
+        imageData.data[i * 4 + 2] = b
+        imageData.data[i * 4 + 3] = 255
+      }
+
+      ctx.putImageData(imageData, 0, 0)
+
+      // Create download links for both PNG and raw data
+      const pngBlob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((blob) => resolve(blob!), 'image/png')
+      })
+      
+      const pngUrl = URL.createObjectURL(pngBlob)
+      const pngLink = document.createElement('a')
+      pngLink.href = pngUrl
+      pngLink.download = 'selected_area.png'
+      pngLink.click()
+      URL.revokeObjectURL(pngUrl)
+
+      // Save raw data as CSV
+      const csvContent = selectedData.join('\n')
+      const csvBlob = new Blob([csvContent], { type: 'text/csv' })
+      const csvUrl = URL.createObjectURL(csvBlob)
+      const csvLink = document.createElement('a')
+      csvLink.href = csvUrl
+      csvLink.download = 'selected_area_data.csv'
+      csvLink.click()
+      URL.revokeObjectURL(csvUrl)
+
+    } catch (err) {
+      console.error('Error downloading selected area:', err)
+      setError('Failed to download selected area')
+    }
+  }
 
   const handleTiffUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -161,7 +248,8 @@ export default function Globe() {
         width,
         height,
         bbox,
-        center: [centerLng, centerLat]
+        center: [centerLng, centerLat],
+        originalData: data
       })
 
       // Create visualization
@@ -183,7 +271,7 @@ export default function Globe() {
         ))
 
         const [r, g, b] = COLOR_SCHEMES[colorScheme](normalizedValue)
-        const alpha = 255 // Make fully opaque
+        const alpha = 255
 
         imageData.data[i * 4] = r
         imageData.data[i * 4 + 1] = g
@@ -199,10 +287,10 @@ export default function Globe() {
         type: 'image',
         url: dataUrl,
         coordinates: [
-          [bbox[0], bbox[3]], // top left
-          [bbox[2], bbox[3]], // top right 
-          [bbox[2], bbox[1]], // bottom right
-          [bbox[0], bbox[1]]  // bottom left
+          [bbox[0], bbox[3]],
+          [bbox[2], bbox[3]], 
+          [bbox[2], bbox[1]],
+          [bbox[0], bbox[1]]
         ]
       })
 
@@ -217,7 +305,6 @@ export default function Globe() {
         }
       })
 
-      // Fit bounds to show the image
       map.current.fitBounds([
         [bbox[0], bbox[1]],
         [bbox[2], bbox[3]]
@@ -295,7 +382,26 @@ export default function Globe() {
       map.current.addControl(new mapboxgl.ScaleControl())
 
       map.current.on('draw.create', (e: { features: any[] }) => {
-        setSelectedArea(e.features[0])
+        const feature = e.features[0]
+        setSelectedArea(feature)
+        
+        // Calculate bounds of the drawn feature
+        const coordinates = feature.geometry.coordinates[0]
+        const bounds = coordinates.reduce((bounds: number[], coord: number[]) => {
+          return [
+            Math.min(bounds[0], coord[0]), // minX
+            Math.min(bounds[1], coord[1]), // minY
+            Math.max(bounds[2], coord[0]), // maxX
+            Math.max(bounds[3], coord[1])  // maxY
+          ]
+        }, [Infinity, Infinity, -Infinity, -Infinity])
+        
+        setSelectedBounds(bounds)
+      })
+
+      map.current.on('draw.delete', () => {
+        setSelectedArea(null)
+        setSelectedBounds(null)
       })
 
       // Error handling for map load
@@ -338,7 +444,7 @@ export default function Globe() {
           ))
           
           const [r, g, b] = COLOR_SCHEMES[colorScheme](normalizedValue)
-          const alpha = 255 // Make fully opaque
+          const alpha = 255
           
           imageData.data[i * 4] = r
           imageData.data[i * 4 + 1] = g
@@ -421,6 +527,22 @@ export default function Globe() {
                     />
                   </div>
                 </div>
+
+                {selectedBounds && (
+                  <div className="mt-4">
+                    <h3 className="font-semibold text-black">Selected Area:</h3>
+                    <p className="text-black">West: {selectedBounds[0].toFixed(4)}°</p>
+                    <p className="text-black">South: {selectedBounds[1].toFixed(4)}°</p>
+                    <p className="text-black">East: {selectedBounds[2].toFixed(4)}°</p>
+                    <p className="text-black">North: {selectedBounds[3].toFixed(4)}°</p>
+                    <button
+                      onClick={downloadSelectedArea}
+                      className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                    >
+                      Download Selected Area
+                    </button>
+                  </div>
+                )}
 
                 <div>
                   <h3 className="font-semibold text-black">Data Statistics:</h3>
