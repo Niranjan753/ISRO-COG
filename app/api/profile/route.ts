@@ -1,115 +1,82 @@
 import { NextResponse } from 'next/server'
-import { writeFile, unlink } from 'fs/promises'
-import path from 'path'
-import { mkdir } from 'fs/promises'
 import { spawn } from 'child_process'
+import path from 'path'
+import { mkdir, unlink, writeFile } from 'fs/promises'
 
 export async function POST(request: Request) {
-  let tempFilePath: string | null = null;
-  let pngPath: string | null = null;
+  let tempFilePath: string | null = null
+  let pngPath: string | null = null
   
   try {
-    // Check if this is a JSON request (profile data request)
     const contentType = request.headers.get('content-type')
     if (contentType?.includes('application/json')) {
-      // Handle profile data request
       const { start, end, imagePath } = await request.json()
       return handleProfileData(start, end, imagePath)
     }
 
-    // Handle file upload
     const data = await request.formData()
     const file = data.get('file') as File
     
     if (!file) {
-      return NextResponse.json(
-        { error: 'No file provided' },
-        { status: 400 }
+      return new NextResponse(
+        JSON.stringify({ error: 'No file provided' }), 
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
       )
     }
 
-    // Validate file type
     if (!file.name.toLowerCase().match(/\.(tiff|tif)$/)) {
-      return NextResponse.json(
-        { error: 'Invalid file type. Only TIFF files are allowed.' },
-        { status: 400 }
+      return new NextResponse(
+        JSON.stringify({ error: 'Invalid file type. Only TIFF files are allowed.' }),
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
       )
     }
 
-    // Create temporary directory for TIFF files
+    // Create temporary directories
     const tempDir = path.join(process.cwd(), 'public', 'temp_tiff')
+    const pngDir = path.join(process.cwd(), 'public', 'temp_png')
     await mkdir(tempDir, { recursive: true })
+    await mkdir(pngDir, { recursive: true })
 
-    // Save file with timestamp and original name
+    // Save TIFF file
     const timestamp = Date.now()
     const fileName = `${timestamp}_${file.name}`
     tempFilePath = path.join(tempDir, fileName)
-
-    // Convert file to buffer and save
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
+    
+    // Convert ArrayBuffer to Buffer and write to file
+    const buffer = Buffer.from(await file.arrayBuffer())
     await writeFile(tempFilePath, buffer)
 
-    // Get the path to the generated PNG
-    const pngFileName = fileName.replace(/\.(tiff|tif)$/i, '_visual.png')
-    pngPath = path.join(tempDir, pngFileName)
-    const publicPath = `/temp_tiff/${pngFileName}`
-
-    console.log('Debug paths:', {
-      tempDir,
-      fileName,
-      tempFilePath,
-      pngPath,
-      publicPath
-    })
-
-    // Process TIFF file using Python script
-    const scriptPath = path.join(process.cwd(), 'app', 'scripts', 'pathProfile.py')
+    // Convert TIFF to PNG using GDAL
+    const pngFileName = `${timestamp}_${file.name.replace(/\.(tiff|tif)$/i, '.png')}`
+    pngPath = path.join(pngDir, pngFileName)
     
-    // Call Python script for initial processing
-    const pythonProcess = spawn('python', [
-      scriptPath,
-      tempFilePath,
-      JSON.stringify([0, 0]), // Dummy points for initial processing
-      JSON.stringify([1, 1])
-    ])
-
-    let errorOutput = '';
-    pythonProcess.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-      console.error(`Python error: ${data}`);
-    });
-
     await new Promise((resolve, reject) => {
-      pythonProcess.on('close', (code) => {
-        if (code === 0) {
-          resolve(true);
-        } else {
-          reject(new Error(`Python script failed with code ${code}: ${errorOutput}`));
-        }
-      });
-    });
-
-    // Verify files exist
-    if (!await fileExists(tempFilePath) || !await fileExists(pngPath)) {
-      throw new Error('Failed to process TIFF file')
-    }
-
-    // Schedule cleanup after 5 minutes
-    setTimeout(async () => {
-      try {
-        if (tempFilePath) await unlink(tempFilePath).catch(console.error)
-        if (pngPath) await unlink(pngPath).catch(console.error)
-      } catch (err) {
-        console.warn('Failed to delete temp files:', err)
-      }
-    }, 5 * 60 * 1000)
-
-    return NextResponse.json({ 
-      status: 'success',
-      filePath: publicPath,
-      originalPath: tempFilePath
+      const process = spawn('gdal_translate', ['-of', 'PNG', tempFilePath, pngPath])
+      process.on('close', (code) => {
+        if (code === 0) resolve(null)
+        else reject(new Error('Failed to convert TIFF to PNG'))
+      })
     })
+
+    const publicPath = `/temp_png/${pngFileName}`
+
+    return new NextResponse(
+      JSON.stringify({ 
+        status: 'success',
+        filePath: publicPath,
+        originalPath: tempFilePath
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    )
 
   } catch (error) {
     // Cleanup on error
@@ -120,10 +87,14 @@ export async function POST(request: Request) {
       console.warn('Failed to delete temp files:', err)
     }
 
-    console.error('Upload error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process file' },
-      { status: 500 }
+    return new NextResponse(
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Failed to process file' 
+      }),
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
     )
   }
 }

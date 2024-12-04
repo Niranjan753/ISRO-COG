@@ -62,12 +62,19 @@ export default function PathProfile() {
         body: formData
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to upload file')
+      const contentType = response.headers.get('content-type')
+      let data
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json()
+      } else {
+        throw new Error('Invalid response format from server')
       }
 
-      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to upload file')
+      }
+
       console.log('Server response:', data)
 
       if (!data.filePath) {
@@ -228,8 +235,8 @@ export default function PathProfile() {
       </div>
       <canvas 
         ref={canvasRef}
-        width="800"
-        height="600"
+        width="100"
+        height="85"
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={endDrawing}

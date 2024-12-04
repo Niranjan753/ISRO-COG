@@ -145,7 +145,7 @@ export default function Home() {
                   <p className="text-gray-400">
                     Have questions? Reach out to us at<br />
                     <a href="mailto:niranjanr753@gmail.com" className="text-indigo-400 hover:text-indigo-300">
-                      niranjanr753@gmail.com
+                      here-there-where
                     </a>
                   </p>
                 </div>
