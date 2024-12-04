@@ -139,7 +139,29 @@ export default function Globe() {
         }
       }
 
-      // Create visualization
+      // Create TIFF file
+      const buffer = new ArrayBuffer(8 + (width * height * 4))
+      const view = new DataView(buffer)
+      
+      view.setUint16(0, 0x4949)
+      view.setUint16(2, 42)
+      view.setUint32(4, 8)
+
+      const floatArray = new Float32Array(buffer, 8)
+      floatArray.set(selectedData)
+
+      // Create and download TIFF blob
+      const tiffBlob = new Blob([buffer], { type: 'image/tiff' })
+      const tiffUrl = URL.createObjectURL(tiffBlob)
+      const tiffLink = document.createElement('a')
+      tiffLink.href = tiffUrl
+      tiffLink.download = `selected_area_${Date.now()}.tif`
+      document.body.appendChild(tiffLink)
+      tiffLink.click()
+      document.body.removeChild(tiffLink)
+      URL.revokeObjectURL(tiffUrl)
+
+      // Create PNG visualization
       const canvas = document.createElement('canvas')
       canvas.width = width
       canvas.height = height
@@ -148,7 +170,6 @@ export default function Globe() {
 
       const imageData = ctx.createImageData(width, height)
       
-      // Apply current color scheme and contrast
       for (let i = 0; i < selectedData.length; i++) {
         const value = selectedData[i]
         const normalizedValue = Math.min(1, Math.max(0,
@@ -164,32 +185,24 @@ export default function Globe() {
       }
 
       ctx.putImageData(imageData, 0, 0)
-
-      // Create download links for both PNG and raw data
-      const pngBlob = await new Promise<Blob>((resolve) => {
-        canvas.toBlob((blob) => resolve(blob!), 'image/png')
-      })
       
-      const pngUrl = URL.createObjectURL(pngBlob)
-      const pngLink = document.createElement('a')
-      pngLink.href = pngUrl
-      pngLink.download = 'selected_area.png'
-      pngLink.click()
-      URL.revokeObjectURL(pngUrl)
-
-      // Save raw data as CSV
-      const csvContent = selectedData.join('\n')
-      const csvBlob = new Blob([csvContent], { type: 'text/csv' })
-      const csvUrl = URL.createObjectURL(csvBlob)
-      const csvLink = document.createElement('a')
-      csvLink.href = csvUrl
-      csvLink.download = 'selected_area_data.csv'
-      csvLink.click()
-      URL.revokeObjectURL(csvUrl)
+      // Create and download PNG blob
+      canvas.toBlob((pngBlob) => {
+        if (pngBlob) {
+          const pngUrl = URL.createObjectURL(pngBlob)
+          const pngLink = document.createElement('a')
+          pngLink.href = pngUrl
+          pngLink.download = `selected_area_${Date.now()}.png`
+          document.body.appendChild(pngLink)
+          pngLink.click()
+          document.body.removeChild(pngLink)
+          URL.revokeObjectURL(pngUrl)
+        }
+      }, 'image/png')
 
     } catch (err) {
       console.error('Error downloading selected area:', err)
-      setError('Failed to download selected area')
+      setError('Failed to download selected area. Please try again.')
     }
   }
 
@@ -539,7 +552,7 @@ export default function Globe() {
                       onClick={downloadSelectedArea}
                       className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
                     >
-                      Download Selected Area
+                      Download Selected Area (TIFF & PNG)
                     </button>
                   </div>
                 )}
