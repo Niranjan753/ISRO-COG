@@ -22,6 +22,57 @@ type TiffData = {
   center: [number, number]
 }
 
+type ColorScheme = 'rainbow' | 'thermal' | 'grayscale' | 'terrain'
+
+// Helper function to convert HSL to RGB
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  let r, g, b;
+
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    }
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+const COLOR_SCHEMES = {
+  rainbow: (value: number) => {
+    const hue = (1 - value) * 240
+    return hslToRgb(hue / 360, 1, 0.5)
+  },
+  thermal: (value: number) => {
+    if (value < 0.33) return [0, 0, Math.round(255 * (value * 3))]
+    if (value < 0.66) return [0, Math.round(255 * ((value - 0.33) * 3)), 255]
+    return [Math.round(255 * ((value - 0.66) * 3)), 255, 255]
+  },
+  grayscale: (value: number) => {
+    const v = Math.round(value * 255)
+    return [v, v, v]
+  },
+  terrain: (value: number) => {
+    if (value < 0.2) return [0, 0, 255] // Deep water
+    if (value < 0.4) return [0, 255, 255] // Shallow water
+    if (value < 0.6) return [0, 255, 0] // Lowland
+    if (value < 0.8) return [255, 255, 0] // Highland
+    return [255, 0, 0] // Mountain
+  }
+}
+
 export default function Globe() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
@@ -34,261 +85,9 @@ export default function Globe() {
   const [error, setError] = useState<string | null>(null)
   const [tiffData, setTiffData] = useState<TiffData>()
   const [currentCoords, setCurrentCoords] = useState<[number, number]>([0, 0])
+  const [colorScheme, setColorScheme] = useState<ColorScheme>('rainbow')
+  const [contrast, setContrast] = useState(1)
   const searchParams = useSearchParams()
-
-  useEffect(() => {
-    const files = searchParams.get('files')
-    if (files) {
-      setSelectedFiles(files.split(','))
-    }
-  }, [searchParams])
-
-  const handleTiffUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !map.current) {
-      setError('No file selected or map not initialized')
-      return
-    }
-
-    setError(null)
-
-    try {
-      // Clean up existing layers with a safe method
-      const cleanup = () => {
-        try {
-          if (map.current?.getLayer('tiff-layer')) {
-            map.current.removeLayer('tiff-layer')
-          }
-          if (map.current?.getSource('tiff-overlay')) {
-            map.current.removeSource('tiff-overlay')
-          }
-        } catch (cleanupErr) {
-          console.warn('Error during cleanup:', cleanupErr)
-        }
-      }
-      cleanup()
-
-      // Read file in chunks to prevent memory issues
-      const chunkSize = 10 * 1024 * 1024 // 10MB chunks
-      const fileReader = new FileReader()
-      const chunks: ArrayBuffer[] = []
-      
-      let offset = 0
-      
-      const readNextChunk = () => {
-        const slice = file.slice(offset, offset + chunkSize)
-        fileReader.readAsArrayBuffer(slice)
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        fileReader.onload = async (e) => {
-          if (e.target?.result instanceof ArrayBuffer) {
-            chunks.push(e.target.result)
-            offset += chunkSize
-            
-            if (offset < file.size) {
-              readNextChunk()
-            } else {
-              try {
-                // Combine chunks
-                const fullBuffer = new Uint8Array(file.size)
-                let position = 0
-                chunks.forEach(chunk => {
-                  fullBuffer.set(new Uint8Array(chunk), position)
-                  position += chunk.byteLength
-                })
-
-                const tiff = await GeoTIFF.fromArrayBuffer(fullBuffer.buffer)
-                const image = await tiff.getImage()
-                const bbox = image.getBoundingBox()
-                
-                if (!bbox) {
-                  throw new Error('Invalid bounding box in TIFF file')
-                }
-
-                const width = image.getWidth()
-                const height = image.getHeight()
-                
-                // Read data in smaller chunks
-                const tileWidth = 256
-                const tileHeight = 256
-                
-                const numTilesX = Math.ceil(width / tileWidth)
-                const numTilesY = Math.ceil(height / tileHeight)
-                
-                let min = Infinity
-                let max = -Infinity
-                const values: number[] = []
-
-                // Process tiles
-                for (let ty = 0; ty < numTilesY; ty++) {
-                  for (let tx = 0; tx < numTilesX; tx++) {
-                    const x = tx * tileWidth
-                    const y = ty * tileHeight
-                    const w = Math.min(tileWidth, width - x)
-                    const h = Math.min(tileHeight, height - y)
-
-                    const tileData = await image.readRasters({
-                      window: [x, y, x + w, y + h],
-                      width: w,
-                      height: h
-                    })
-
-                    const data = tileData[0] as Float32Array | Uint16Array | Uint8Array
-                    
-                    // Sample data from tile
-                    const stride = Math.max(1, Math.floor(data.length / 100))
-                    for (let i = 0; i < data.length; i += stride) {
-                      const value = data[i]
-                      values.push(value)
-                      min = Math.min(min, value)
-                      max = Math.max(max, value)
-                    }
-                  }
-                }
-
-                // Calculate center coordinates
-                const centerLng = (bbox[0] + bbox[2]) / 2
-                const centerLat = (bbox[1] + bbox[3]) / 2
-
-                setTiffData({ 
-                  min, 
-                  max, 
-                  values,
-                  width,
-                  height,
-                  bbox,
-                  center: [centerLng, centerLat]
-                })
-
-                // Create visualization
-                const canvas = document.createElement('canvas')
-                canvas.width = width
-                canvas.height = height
-                const ctx = canvas.getContext('2d')
-                
-                if (!ctx) {
-                  throw new Error('Could not create canvas context')
-                }
-
-                const imageData = ctx.createImageData(width, height)
-                
-                // Enhanced color mapping with transparency for globe visualization
-                const rasterData = await image.readRasters()
-                const data = rasterData[0] as Float32Array | Uint16Array | Uint8Array
-
-                for (let i = 0; i < data.length; i++) {
-                  const value = data[i]
-                  const normalizedValue = (value - min) / (max - min)
-                  const hue = (1 - normalizedValue) * 240 // Blue to Red
-                  const [r, g, b] = hslToRgb(hue / 360, 1, 0.5)
-                  
-                  // Add alpha based on value intensity
-                  const alpha = Math.round(normalizedValue * 255)
-                  
-                  imageData.data[i * 4] = r
-                  imageData.data[i * 4 + 1] = g
-                  imageData.data[i * 4 + 2] = b
-                  imageData.data[i * 4 + 3] = alpha
-                }
-
-                ctx.putImageData(imageData, 0, 0)
-                const dataUrl = canvas.toDataURL('image/png')
-
-                // Ensure map is loaded
-                if (!map.current?.loaded()) {
-                  await new Promise<void>((loadResolve) => {
-                    map.current?.on('load', () => loadResolve())
-                  })
-                }
-
-                // Add to map with enhanced 3D visualization
-                if (map.current) {
-                  map.current.addSource('tiff-overlay', {
-                    type: 'image',
-                    url: dataUrl,
-                    coordinates: [
-                      [bbox[0], bbox[3]],
-                      [bbox[2], bbox[3]],
-                      [bbox[2], bbox[1]],
-                      [bbox[0], bbox[1]]
-                    ]
-                  })
-
-                  map.current.addLayer({
-                    id: 'tiff-layer',
-                    type: 'raster',
-                    source: 'tiff-overlay',
-                    paint: {
-                      'raster-opacity': 0.8,
-                      'raster-resampling': 'linear',
-                      'raster-fade-duration': 0
-                    }
-                  })
-
-                  // Set appropriate view
-                  map.current.setProjection('globe')
-                  map.current.fitBounds([
-                    [bbox[0], bbox[1]],
-                    [bbox[2], bbox[3]]
-                  ] as mapboxgl.LngLatBoundsLike, {
-                    padding: 50,
-                    maxZoom: 16
-                  })
-
-                  // Track mouse movement for coordinates
-                  map.current.on('mousemove', (e) => {
-                    setCurrentCoords([e.lngLat.lng, e.lngLat.lat])
-                  })
-                }
-
-                resolve()
-              } catch (err) {
-                reject(err)
-              }
-            }
-          }
-        }
-
-        fileReader.onerror = () => reject(fileReader.error)
-        readNextChunk()
-      })
-
-    } catch (err) {
-      const errorMessage = err instanceof Error 
-        ? `TIFF Processing Error: ${err.message}`
-        : 'Failed to process TIFF file'
-      
-      console.error('TIFF error:', errorMessage)
-      setError(errorMessage)
-    }
-  }
-
-  // Helper function to convert HSL to RGB
-  function hslToRgb(h: number, s: number, l: number): [number, number, number] {
-    let r, g, b;
-
-    if (s === 0) {
-      r = g = b = l;
-    } else {
-      const hue2rgb = (p: number, q: number, t: number) => {
-        if (t < 0) t += 1;
-        if (t > 1) t -= 1;
-        if (t < 1/6) return p + (q - p) * 6 * t;
-        if (t < 1/2) return q;
-        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-        return p;
-      }
-
-      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-      const p = 2 * l - q;
-      r = hue2rgb(p, q, h + 1/3);
-      g = hue2rgb(p, q, h);
-      b = hue2rgb(p, q, h - 1/3);
-    }
-
-    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
-  }
 
   const toggleView = () => {
     if (!map.current) return
@@ -304,6 +103,148 @@ export default function Globe() {
     setIsMercator(!isMercator)
     map.current.setProjection(isMercator ? 'globe' : 'mercator')
   }
+
+  // ... rest of your existing useEffect hooks ...
+
+  const handleTiffUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !map.current) {
+      setError('No file selected or map not initialized')
+      return
+    }
+
+    setError(null)
+
+    try {
+      // Clean up existing layers
+      if (map.current.getLayer('tiff-layer')) {
+        map.current.removeLayer('tiff-layer')
+      }
+      if (map.current.getSource('tiff-overlay')) {
+        map.current.removeSource('tiff-overlay')
+      }
+
+      const arrayBuffer = await file.arrayBuffer()
+      const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer)
+      const image = await tiff.getImage()
+      const bbox = image.getBoundingBox()
+
+      if (!bbox) {
+        throw new Error('Invalid bounding box in TIFF file')
+      }
+
+      const width = image.getWidth()
+      const height = image.getHeight()
+      const rasterData = await image.readRasters()
+      const data = rasterData[0] as Float32Array | Uint16Array | Uint8Array
+
+      let min = Infinity
+      let max = -Infinity
+      const values: number[] = []
+
+      // Find min/max values
+      for (let i = 0; i < data.length; i++) {
+        const value = data[i]
+        values.push(value)
+        min = Math.min(min, value)
+        max = Math.max(max, value)
+      }
+
+      // Calculate center coordinates
+      const centerLng = (bbox[0] + bbox[2]) / 2
+      const centerLat = (bbox[1] + bbox[3]) / 2
+
+      setTiffData({
+        min,
+        max,
+        values,
+        width,
+        height,
+        bbox,
+        center: [centerLng, centerLat]
+      })
+
+      // Create visualization
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+
+      if (!ctx) {
+        throw new Error('Could not create canvas context')
+      }
+
+      const imageData = ctx.createImageData(width, height)
+
+      for (let i = 0; i < data.length; i++) {
+        const value = data[i]
+        const normalizedValue = Math.min(1, Math.max(0,
+          ((value - min) / (max - min)) * contrast
+        ))
+
+        const [r, g, b] = COLOR_SCHEMES[colorScheme](normalizedValue)
+        const alpha = 255 // Make fully opaque
+
+        imageData.data[i * 4] = r
+        imageData.data[i * 4 + 1] = g
+        imageData.data[i * 4 + 2] = b
+        imageData.data[i * 4 + 3] = alpha
+      }
+
+      ctx.putImageData(imageData, 0, 0)
+      const dataUrl = canvas.toDataURL('image/png')
+
+      // Add to map
+      map.current.addSource('tiff-overlay', {
+        type: 'image',
+        url: dataUrl,
+        coordinates: [
+          [bbox[0], bbox[3]], // top left
+          [bbox[2], bbox[3]], // top right 
+          [bbox[2], bbox[1]], // bottom right
+          [bbox[0], bbox[1]]  // bottom left
+        ]
+      })
+
+      map.current.addLayer({
+        id: 'tiff-layer',
+        type: 'raster',
+        source: 'tiff-overlay',
+        paint: {
+          'raster-opacity': 1,
+          'raster-resampling': 'nearest',
+          'raster-fade-duration': 0
+        }
+      })
+
+      // Fit bounds to show the image
+      map.current.fitBounds([
+        [bbox[0], bbox[1]],
+        [bbox[2], bbox[3]]
+      ] as mapboxgl.LngLatBoundsLike, {
+        padding: 50
+      })
+
+      map.current.on('mousemove', (e) => {
+        setCurrentCoords([e.lngLat.lng, e.lngLat.lat])
+      })
+
+    } catch (err) {
+      const errorMessage = err instanceof Error 
+        ? `TIFF Processing Error: ${err.message}`
+        : 'Failed to process TIFF file'
+      
+      console.error('TIFF error:', err)
+      setError(errorMessage)
+    }
+  }
+
+  useEffect(() => {
+    const files = searchParams.get('files')
+    if (files) {
+      setSelectedFiles(files.split(','))
+    }
+  }, [searchParams])
 
   useEffect(() => {
     if (!mapContainer.current) return
@@ -366,13 +307,70 @@ export default function Globe() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to initialize map'
       setError(errorMessage)
-      console.error('Map initialization error:', err instanceof Error ? err.message : err)
+      console.error('Map initialization error:', err)
     }
 
     return () => {
       map.current?.remove()
     }
   }, [])
+
+  // Update visualization when contrast or color scheme changes
+  useEffect(() => {
+    if (!map.current || !tiffData) return
+
+    const updateVisualization = async () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = tiffData.width
+        canvas.height = tiffData.height
+        const ctx = canvas.getContext('2d')
+        
+        if (!ctx) return
+
+        const imageData = ctx.createImageData(tiffData.width, tiffData.height)
+        
+        // Apply color scheme and contrast
+        for (let i = 0; i < tiffData.values.length; i++) {
+          const value = tiffData.values[i]
+          const normalizedValue = Math.min(1, Math.max(0, 
+            ((value - tiffData.min) / (tiffData.max - tiffData.min)) * contrast
+          ))
+          
+          const [r, g, b] = COLOR_SCHEMES[colorScheme](normalizedValue)
+          const alpha = 255 // Make fully opaque
+          
+          imageData.data[i * 4] = r
+          imageData.data[i * 4 + 1] = g
+          imageData.data[i * 4 + 2] = b
+          imageData.data[i * 4 + 3] = alpha
+        }
+
+        ctx.putImageData(imageData, 0, 0)
+        const dataUrl = canvas.toDataURL('image/png')
+
+        // Update existing source instead of removing/re-adding
+        if (map.current) {
+          const source = map.current.getSource('tiff-overlay') as mapboxgl.ImageSource
+          if (source) {
+            source.updateImage({
+              url: dataUrl,
+              coordinates: [
+                [tiffData.bbox[0], tiffData.bbox[3]],
+                [tiffData.bbox[2], tiffData.bbox[3]], 
+                [tiffData.bbox[2], tiffData.bbox[1]],
+                [tiffData.bbox[0], tiffData.bbox[1]]
+              ]
+            })
+          }
+        }
+      } catch (err) {
+        console.error('Error updating visualization:', err)
+      }
+    }
+
+    updateVisualization()
+  }, [colorScheme, contrast, tiffData])
 
   return (
     <div className="flex flex-col h-screen bg-white overflow-hidden">
@@ -395,6 +393,35 @@ export default function Globe() {
             )}
             {tiffData && (
               <div className="mt-4 space-y-4">
+                <div>
+                  <h3 className="font-semibold text-black">Visualization Settings:</h3>
+                  <div className="mt-2">
+                    <label className="block text-sm font-medium text-gray-700">Color Scheme</label>
+                    <select
+                      value={colorScheme}
+                      onChange={(e) => setColorScheme(e.target.value as ColorScheme)}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    >
+                      <option value="rainbow">Rainbow</option>
+                      <option value="thermal">Thermal</option>
+                      <option value="grayscale">Grayscale</option>
+                      <option value="terrain">Terrain</option>
+                    </select>
+                  </div>
+                  <div className="mt-2">
+                    <label className="block text-sm font-medium text-gray-700">Contrast</label>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="2"
+                      step="0.1"
+                      value={contrast}
+                      onChange={(e) => setContrast(parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <h3 className="font-semibold text-black">Data Statistics:</h3>
                   <p className="text-black">Min Value: {tiffData.min.toFixed(2)}</p>
