@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const upload = new Upload({
       client: s3Client,
       params: {
-        Bucket: 'h5-files-raw',
+        Bucket: 'h5-s3-data',
         Key: filename,
         Body: buffer,
         ContentType: 'application/x-hdf5',

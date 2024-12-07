@@ -8,12 +8,13 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css'
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css'
 import Navbar from '../components/Navbar'
-import FileList from '../components/FileList'
 import MapControls from '../components/MapControls'
 import TiffManipulator from '../components/TiffManipulator'
 import { useTiffProcessing } from './hooks/useTiffProcessing'
 import { useSearchParams } from 'next/navigation'
 import { MapState, TiffFilters, ColorScheme } from './types'
+import BandSelector from '../components/BandSelector'
+import BandControls from '../components/BandControls'
 
 export default function Globe() {
   const mapContainer = useRef<HTMLDivElement>(null)
@@ -25,12 +26,16 @@ export default function Globe() {
     isMercator: false
   })
   const [currentCoords, setCurrentCoords] = useState<[number, number]>([0, 0])
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
+  const [selectedFiles, setSelectedFiles] = useState<any[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [filters, setFilters] = useState<TiffFilters>({
     colorScheme: 'rainbow',
     contrast: 1
   })
   const searchParams = useSearchParams()
+  const [selectedBand, setSelectedBand] = useState<string>('');
+  const [availableFiles, setAvailableFiles] = useState<any[]>([]);
+  const [isApplied, setIsApplied] = useState(false);
 
   const {
     tiffData,
@@ -38,7 +43,9 @@ export default function Globe() {
     fileName,
     processTiff,
     applyFilters,
-    downloadSelectedArea
+    downloadSelectedArea,
+    setTiffData,
+    setFileName
   } = useTiffProcessing(mapContainer, map, draw)
 
   const handleMapLoad = (loadedMap: mapboxgl.Map) => {
@@ -71,6 +78,59 @@ export default function Globe() {
     setSelectedFiles(prev => [...prev, file.name])
   }
 
+  const handleS3FileLoad = async (fileInfo: any) => {
+    if (!map.current) return;
+    setLoadError(null);
+    
+    try {
+      const response = await fetch('/api/fetch-cog', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          filename: fileInfo.filename
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch COG file');
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+        throw new Error('Received empty file from server');
+      }
+
+      const file = new File([arrayBuffer], fileInfo.filename, { type: 'image/tiff' });
+      
+      // Process the new TIFF file
+      if (map.current) {
+        // Ensure map style is loaded
+        if (!map.current.getStyle()) {
+          await new Promise<void>((resolve) => {
+            map.current!.once('style.load', () => resolve());
+          });
+        }
+        
+        await processTiff(file, map.current);
+        
+        // Update selected files after successful processing
+        setSelectedFiles(prev => {
+          const filtered = prev.filter(f => 
+            (typeof f === 'string' ? f : f.filename) !== fileInfo.filename
+          );
+          return [...filtered, fileInfo];
+        });
+      }
+    } catch (error) {
+      console.error('Error loading COG file:', error);
+      setLoadError(error instanceof Error ? error.message : 'Failed to load COG file');
+      throw error; // Propagate error to handleApplyBand
+    }
+  };
+
   const handleFilterChange = (key: keyof TiffFilters, value: any) => {
     const newFilters = { ...filters, [key]: value }
     setFilters(newFilters)
@@ -93,90 +153,219 @@ export default function Globe() {
   }
 
   const removeFile = (fileName: string) => {
-    setSelectedFiles(prev => prev.filter(f => f !== fileName))
+    setSelectedFiles(prev => prev.filter(f => {
+      if (typeof f === 'string') return f !== fileName
+      return f.filename !== fileName
+    }))
   }
 
-  useEffect(() => {
-    if (!mapContainer.current) return
-
-    mapboxgl.accessToken = 'pk.eyJ1IjoibmluamE3NTMiLCJhIjoiY200YThhdTNoMDRzZTJscXZiZGtoOWYwNyJ9.sC-E678ms3Ehx6hWID7A0g'
-
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/satellite-v9',
-      center: [0, 20],
-      zoom: 2,
-      projection: mapState.isMercator ? 'mercator' : 'globe',
-      renderWorldCopies: true
-    })
-
-    map.current.on('load', () => handleMapLoad(map.current!))
-    map.current.on('draw.create', handleDrawCreate)
-
-    draw.current = new MapboxDraw({
-      displayControlsDefault: false,
-      controls: {
-        polygon: true,
-        trash: true
-      }
-    })
-
-    geocoder.current = new MapboxGeocoder({
-      accessToken: mapboxgl.accessToken,
-      mapboxgl: mapboxgl,
-      marker: false
-    })
-
-    map.current.addControl(draw.current)
-    map.current.addControl(geocoder.current)
-    map.current.addControl(new mapboxgl.NavigationControl())
-    map.current.addControl(new mapboxgl.FullscreenControl())
-
-    return () => {
-      map.current?.remove()
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!map.current) return
+  const handleRemoveBand = async () => {
+    if (!map.current) return;
     
-    if (mapState.isGlobeView) {
-      map.current.setStyle('mapbox://styles/mapbox/satellite-v9')
-    } else {
-      map.current.setStyle('mapbox://styles/mapbox/satellite-streets-v12')
-    }
+    try {
+      // Remove existing map instance
+      if (map.current) {
+        map.current.remove();
+      }
 
-    // Re-add the fog after style change
-    map.current.once('style.load', () => {
-      map.current?.setFog({
+      // Clear all states
+      setSelectedFiles([]);
+      setSelectedBand('');
+      setIsApplied(false);
+      setTiffData(undefined);
+      setFileName(null);
+      setLoadError(null);
+
+      // Create a new map instance with current projection
+      const newMap = new mapboxgl.Map({
+        container: mapContainer.current!,
+        style: 'mapbox://styles/mapbox/satellite-v9',
+        center: [0, 20],
+        zoom: 2,
+        projection: mapState.isMercator ? 'mercator' : 'globe',
+        renderWorldCopies: true,
+        preserveDrawingBuffer: true
+      });
+
+      // Wait for the new map to load
+      await new Promise<void>((resolve) => {
+        newMap.once('load', () => {
+          handleMapLoad(newMap);
+          resolve();
+        });
+      });
+
+      // Add controls to new map
+      newMap.addControl(new mapboxgl.NavigationControl());
+
+      // Set fog for globe view
+      newMap.setFog({
         color: 'rgb(186, 210, 235)',
         'high-color': 'rgb(36, 92, 223)',
         'horizon-blend': 0.02,
         'space-color': 'rgb(11, 11, 25)',
         'star-intensity': 0.6
-      })
-    })
-  }, [mapState.isGlobeView])
+      });
+
+      // Update the map reference
+      map.current = newMap;
+
+    } catch (error) {
+      console.error('Error removing band:', error);
+      setLoadError(error instanceof Error ? error.message : 'Failed to remove band');
+    }
+  };
+
+  const handleApplyBand = async () => {
+    if (!map.current || !selectedBand || availableFiles.length === 0) return;
+    
+    try {
+      setLoadError(null);
+      
+      // Ensure map style is loaded first
+      if (!map.current.getStyle()) {
+        await new Promise<void>((resolve) => {
+          map.current!.once('style.load', () => resolve());
+        });
+      }
+
+      // Store current view state
+      const currentZoom = map.current.getZoom();
+      const currentCenter = map.current.getCenter();
+      const currentPitch = map.current.getPitch();
+      const currentBearing = map.current.getBearing();
+
+      // Remove existing layers and sources first
+      if (map.current.getLayer('tiff-layer')) {
+        map.current.removeLayer('tiff-layer');
+      }
+      if (map.current.getSource('tiff-source')) {
+        map.current.removeSource('tiff-source');
+      }
+
+      // Find the selected file
+      const selectedFile = availableFiles.find((f: { band: string }) => f.band === selectedBand);
+      if (selectedFile) {
+        // Reset states before loading new data
+        setSelectedFiles([]);
+        setTiffData(undefined);
+        setFileName(null);
+        
+        // Add a small delay to ensure cleanup is complete
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        try {
+          // Load the new file
+          await handleS3FileLoad(selectedFile);
+          
+          // Ensure map updates properly
+          if (map.current) {
+            // Restore the previous view state
+            map.current.setZoom(currentZoom);
+            map.current.setCenter(currentCenter);
+            map.current.setPitch(currentPitch);
+            map.current.setBearing(currentBearing);
+
+            // Force style reload if needed
+            if (!map.current.getStyle()) {
+              map.current.setStyle('mapbox://styles/mapbox/satellite-v9');
+              await new Promise<void>((resolve) => {
+                map.current!.once('style.load', () => resolve());
+              });
+            }
+
+            // Force map update
+            map.current.resize();
+            map.current.triggerRepaint();
+            setIsApplied(true);
+          }
+        } catch (error) {
+          console.error('Error loading file:', error);
+          setLoadError('Failed to load selected band');
+          setIsApplied(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error applying band:', error);
+      setLoadError(error instanceof Error ? error.message : 'Failed to apply band');
+      setIsApplied(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!mapContainer.current || map.current) return;
+
+    mapboxgl.accessToken = 'pk.eyJ1IjoibmluamE3NTMiLCJhIjoiY200YThhdTNoMDRzZTJscXZiZGtoOWYwNyJ9.sC-E678ms3Ehx6hWID7A0g';
+
+    const newMap = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: 'mapbox://styles/mapbox/satellite-v9',
+      center: [0, 20],
+      zoom: 2,
+      projection: 'mercator',
+      renderWorldCopies: true,
+      preserveDrawingBuffer: true
+    });
+
+    newMap.on('load', () => {
+      handleMapLoad(newMap);
+    });
+
+    newMap.addControl(new mapboxgl.NavigationControl());
+    map.current = newMap;
+
+    return () => {
+      if (map.current && map.current.loaded()) {
+        map.current.remove();
+      }
+      map.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!map.current) return
+    
     map.current.setProjection(mapState.isMercator ? 'mercator' : 'globe')
   }, [mapState.isMercator])
 
   useEffect(() => {
-    const filesParam = searchParams.get('files')
+    const filesParam = searchParams.get('files');
     if (filesParam) {
-      const fileNames = filesParam.split(',')
-      setSelectedFiles(fileNames)
+      try {
+        const files = JSON.parse(decodeURIComponent(filesParam));
+        setAvailableFiles(files);
+        // Get unique bands
+        const uniqueBands = [...new Set(files.map((f: { band: string }) => f.band))];
+        if (uniqueBands.length > 0) {
+          setSelectedBand(uniqueBands[0] as string);
+        }
+      } catch (error) {
+        console.error('Error parsing files:', error);
+        setLoadError('Failed to parse file information');
+      }
     }
-  }, [searchParams])
+  }, [searchParams]);
+
+  const uniqueBands = [...new Set(availableFiles.map(f => f.band))];
 
   return (
     <div className="flex flex-col h-screen bg-white overflow-hidden">
       <Navbar />
       <div className="flex flex-1 overflow-hidden">
         <div className="w-1/3 p-4 overflow-y-auto">
-          <FileList selectedFiles={selectedFiles} onRemoveFile={removeFile} />
+          <BandSelector
+            bands={uniqueBands}
+            selectedBand={selectedBand}
+            onBandChange={(band) => {
+              setSelectedBand(band);
+              setIsApplied(false);
+            }}
+          />
+          <BandControls
+            selectedBand={selectedBand}
+            onRemoveBand={handleRemoveBand}
+            onApplyBand={handleApplyBand}
+          />
           <div className="mt-4 space-y-4">
             <div className="p-4 bg-white rounded-lg shadow">
               <h2 className="text-xl font-semibold mb-4 text-gray-900">Upload TIFF</h2>
@@ -191,9 +380,9 @@ export default function Globe() {
                   Current file: {fileName}
                 </p>
               )}
-              {error && (
+              {loadError && (
                 <div className="mt-2 p-2 bg-red-100 border border-red-400 text-red-700 rounded">
-                  {error}
+                  {loadError}
                 </div>
               )}
             </div>

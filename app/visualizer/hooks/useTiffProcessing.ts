@@ -424,6 +424,8 @@ export function useTiffProcessing(
     fileName,
     processTiff,
     applyFilters,
-    downloadSelectedArea
+    downloadSelectedArea,
+    setTiffData,
+    setFileName
   }
 }
