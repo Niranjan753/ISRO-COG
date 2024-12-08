@@ -15,11 +15,12 @@ import { useSearchParams } from 'next/navigation'
 import { MapState, TiffFilters, ColorScheme } from './types'
 import BandSelector from '../components/BandSelector'
 import BandControls from '../components/BandControls'
+import BoundingBoxInput from '../components/BoundingBoxInput'
 
 export default function Globe() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
-  const draw = useRef<MapboxDraw | null>(null)
+  const drawRef = useRef<MapboxDraw | null>(null)
   const geocoder = useRef<MapboxGeocoder | null>(null)
   const [mapState, setMapState] = useState<MapState>({
     isGlobeView: false,
@@ -36,6 +37,7 @@ export default function Globe() {
   const [selectedBand, setSelectedBand] = useState<string>('');
   const [availableFiles, setAvailableFiles] = useState<any[]>([]);
   const [isApplied, setIsApplied] = useState(false);
+  const [drawnBbox, setDrawnBbox] = useState<[number, number, number, number] | null>(null);
 
   const {
     tiffData,
@@ -46,7 +48,7 @@ export default function Globe() {
     downloadSelectedArea,
     setTiffData,
     setFileName
-  } = useTiffProcessing(mapContainer, map, draw)
+  } = useTiffProcessing(mapContainer, map, drawRef)
 
   const handleMapLoad = (loadedMap: mapboxgl.Map) => {
     if (!loadedMap) return
@@ -64,11 +66,114 @@ export default function Globe() {
     })
   }
 
+  useEffect(() => {
+    if (!map.current || drawRef.current) return;
+
+    // Initialize draw control only after map is loaded
+    map.current.once('load', () => {
+      drawRef.current = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: {
+          polygon: false,
+          line_string: false,
+          point: false,
+          trash: true,
+          rectangle: true
+        },
+        modes: {
+          ...MapboxDraw.modes,
+          draw_rectangle: MapboxDraw.modes.draw_polygon
+        }
+      });
+
+      map.current?.addControl(drawRef.current);
+
+      // Add draw event listeners
+      map.current?.on('draw.create', handleDrawCreate);
+      map.current?.on('draw.delete', handleDrawDelete);
+    });
+
+    return () => {
+      if (map.current && drawRef.current) {
+        map.current.removeControl(drawRef.current);
+        drawRef.current = null;
+      }
+    };
+  }, [map.current]);
+
   const handleDrawCreate = (e: { features: any[] }) => {
-    if (!e.features?.length) return
-    const coordinates = e.features[0].geometry.coordinates
-    console.log('Drawn coordinates:', coordinates)
-  }
+    if (!e.features?.length) return;
+    
+    const coordinates = e.features[0].geometry.coordinates[0];
+    const bounds = coordinates.reduce(
+      (bounds: number[], coord: number[]) => {
+        return [
+          Math.min(bounds[0], coord[0]), // west
+          Math.min(bounds[1], coord[1]), // south
+          Math.max(bounds[2], coord[0]), // east
+          Math.max(bounds[3], coord[1])  // north
+        ];
+      },
+      [Infinity, Infinity, -Infinity, -Infinity]
+    );
+    
+    setDrawnBbox(bounds as [number, number, number, number]);
+  };
+
+  const handleDrawDelete = () => {
+    setDrawnBbox(null);
+  };
+
+  const handleBboxDownload = async (bbox: [number, number, number, number]) => {
+    if (!selectedBand || !map.current) {
+      setLoadError('No band selected');
+      return;
+    }
+
+    // Find the file corresponding to the selected band
+    const selectedFile = selectedFiles.find(file => 
+      file.filename.includes(selectedBand) || file.band === selectedBand
+    );
+
+    if (!selectedFile) {
+      setLoadError('No file found for selected band');
+      return;
+    }
+    
+    try {
+      console.log('Downloading COG region for file:', selectedFile.filename, 'bbox:', bbox);
+      
+      const response = await fetch('/api/fetch-cog-bbox', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          filename: selectedFile.filename,
+          bbox: bbox,
+          band: selectedBand
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch region');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `region_${selectedBand}_${bbox.join('_')}.cog.tiff`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading region:', error);
+      setLoadError(error instanceof Error ? error.message : 'Failed to download region');
+    }
+  };
 
   const handleTiffUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -312,6 +417,22 @@ export default function Globe() {
     });
 
     newMap.addControl(new mapboxgl.NavigationControl());
+
+    // Add draw control
+    const drawControl = new MapboxDraw({
+      displayControlsDefault: false,
+      controls: {
+        polygon: true,
+        trash: true
+      }
+    });
+    newMap.addControl(drawControl);
+    drawRef.current = drawControl;
+
+    // Add draw event listeners
+    newMap.on('draw.create', handleDrawCreate);
+    newMap.on('draw.delete', () => setDrawnBbox(null));
+
     map.current = newMap;
 
     return () => {
@@ -389,6 +510,10 @@ export default function Globe() {
 
             {tiffData && (
               <div className="space-y-4">
+                <BoundingBoxInput
+                  onDownload={handleBboxDownload}
+                  currentBbox={drawnBbox}
+                />
                 <div className="p-4 bg-white rounded-lg shadow">
                   <h3 className="font-semibold text-lg mb-4 text-gray-900">Visualization Settings</h3>
                   <div className="space-y-4">
@@ -473,6 +598,12 @@ export default function Globe() {
                     </div>
                   </div>
                 </div>
+
+                {/* <BoundingBoxInput
+                  onDownload={handleBboxDownload}
+                  currentBbox={drawnBbox}
+                /> */}
+                
               </div>
             )}
           </div>
