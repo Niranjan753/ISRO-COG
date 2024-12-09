@@ -12,7 +12,7 @@ interface MapControlsProps {
     onToggleProjection
   }: MapControlsProps) {
     return (
-      <div className="absolute top-5 left-5 z-10 bg-white/90 p-3 rounded-lg shadow-xl drop-shadow-lg">
+      <div className="absolute top-20 left-5 z-10 bg-white/90 p-3 rounded-lg shadow-xl drop-shadow-lg">
         <div className="flex gap-2">
           <button
             onClick={onToggleView}

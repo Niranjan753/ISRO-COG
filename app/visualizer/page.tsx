@@ -609,7 +609,7 @@ export default function Globe() {
           </div>
         </div>
 
-        <div className="w-2/3 relative overflow-hidden">
+        <div className="w-2/3 t-2/3 relative overflow-hidden">
           <MapControls
             isGlobeView={mapState.isGlobeView}
             isMercator={mapState.isMercator}

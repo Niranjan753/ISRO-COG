@@ -5,9 +5,9 @@
       "level": "L1B",
       "band": "MIR",
       "date": "04SEP2024",
-      "time": "10:15",
+      "time": "10:15",  
       "size": 5850386,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L1B_MIR_04SEP2024_1015.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1B_MIR_04SEP2024_1015.tif"
     },
     {
       "filename": "COG_L1B_MIR_04SEP2024_1315.tif",
@@ -16,7 +16,7 @@
       "date": "04SEP2024",
       "time": "13:15",
       "size": 5663672,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L1B_MIR_04SEP2024_1315.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1B_MIR_04SEP2024_1315.tif"
     },
     {
       "filename": "COG_L1B_TIR1_04SEP2024_1015.tif",
@@ -25,7 +25,7 @@
       "date": "04SEP2024",
       "time": "10:15",
       "size": 6097479,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L1B_TIR1_04SEP2024_1015.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1B_TIR1_04SEP2024_1015.tif"
     },
     {
       "filename": "COG_L1B_TIR1_04SEP2024_1315.tif",
@@ -34,7 +34,7 @@
       "date": "04SEP2024",
       "time": "13:15",
       "size": 5999128,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L1B_TIR1_04SEP2024_1315.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1B_TIR1_04SEP2024_1315.tif"
     },
     {
       "filename": "COG_L1B_TIR2_04SEP2024_1015.tif",
@@ -43,7 +43,7 @@
       "date": "04SEP2024",
       "time": "10:15",
       "size": 5991307,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L1B_TIR2_04SEP2024_1015.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1B_TIR2_04SEP2024_1015.tif"
     },
     {
       "filename": "COG_L1B_TIR2_04SEP2024_1315.tif",
@@ -52,7 +52,7 @@
       "date": "04SEP2024",
       "time": "13:15",
       "size": 5832566,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L1B_TIR2_04SEP2024_1315.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1B_TIR2_04SEP2024_1315.tif"
     },
     {
       "filename": "COG_L1B_WV_04SEP2024_1015.tif",
@@ -61,7 +61,7 @@
       "date": "04SEP2024",
       "time": "10:15",
       "size": 954599,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L1B_WV_04SEP2024_1015.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1B_WV_04SEP2024_1015.tif"
     },
     {
       "filename": "COG_L1B_WV_04SEP2024_1315.tif",
@@ -70,7 +70,70 @@
       "date": "04SEP2024",
       "time": "13:15",
       "size": 830718,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L1B_WV_04SEP2024_1315.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1B_WV_04SEP2024_1315.tif"
+    },
+    {
+      "filename": "COG_L1C_MIR_04SEP2024_1545.tif",
+      "level": "L1C",
+      "band": "MIR",
+      "date": "04SEP2024",
+      "time": "15:45",
+      "size": 2425519,
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1C_MIR_04SEP2024_1545.tif"
+    },
+    {
+      "filename": "COG_L1C_SWIR_04SEP2024_1545.tif",
+      "level": "L1C",
+      "band": "SWIR",
+      "date": "04SEP2024",
+      "time": "15:45",
+      "size": 1650988,
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1C_SWIR_04SEP2024_1545.tif"
+    },
+    {
+      "filename": "COG_L1C_TIR1_04SEP2024_1545.tif",
+      "level": "L1C",
+      "band": "TIR1",
+      "date": "04SEP2024",
+      "time": "15:45",
+      "size": 2421371,
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1C_TIR1_04SEP2024_1545.tif"
+    },
+    {
+      "filename": "COG_L1C_TIR2_04SEP2024_1545.tif",
+      "level": "L1C",
+      "band": "TIR2",
+      "date": "04SEP2024",
+      "time": "15:45",
+      "size": 2389345,
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1C_TIR2_04SEP2024_1545.tif"
+    },
+    {
+      "filename": "COG_L1C_VIS_04SEP2024_1545.tif",
+      "level": "L1C",
+      "band": "VIS",
+      "date": "04SEP2024",
+      "time": "15:45",
+      "size": 1722450,
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1C_VIS_04SEP2024_1545.tif"
+    },
+    {
+      "filename": "COG_L1C_WV_04SEP2024_1545.tif",
+      "level": "L1C",
+      "band": "WV",
+      "date": "04SEP2024",
+      "time": "15:45",
+      "size": 1085091,
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L1C_WV_04SEP2024_1545.tif"
+    },
+    {
+      "filename": "COG_L2B_HEM_04SEP2024_1715.tif",
+      "level": "L2B",
+      "band": "HEM",
+      "date": "04SEP2024",
+      "time": "17:15",
+      "size": 1024174,
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L2B_HEM_04SEP2024_1715.tif"
     },
     {
       "filename": "COG_L2C_DHI_04SEP2024_1015.tif",
@@ -79,7 +142,16 @@
       "date": "04SEP2024",
       "time": "10:15",
       "size": 1421889,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L2C_DHI_04SEP2024_1015.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L2C_DHI_04SEP2024_1015.tif"
+    },
+    {
+      "filename": "COG_L2C_DHI_04SEP2024_1345.tif",
+      "level": "L2C",
+      "band": "DHI",
+      "date": "04SEP2024",
+      "time": "13:45",
+      "size": 130236,
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L2C_DHI_04SEP2024_1345.tif"
     },
     {
       "filename": "COG_L2C_DNI_04SEP2024_1015.tif",
@@ -88,7 +160,16 @@
       "date": "04SEP2024",
       "time": "10:15",
       "size": 1891541,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L2C_DNI_04SEP2024_1015.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L2C_DNI_04SEP2024_1015.tif"
+    },
+    {
+      "filename": "COG_L2C_DNI_04SEP2024_1345.tif",
+      "level": "L2C",
+      "band": "DNI",
+      "date": "04SEP2024",
+      "time": "13:45",
+      "size": 319822,
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L2C_DNI_04SEP2024_1345.tif"
     },
     {
       "filename": "COG_L2C_GHI_04SEP2024_1015.tif",
@@ -97,7 +178,16 @@
       "date": "04SEP2024",
       "time": "10:15",
       "size": 1830916,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L2C_GHI_04SEP2024_1015.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L2C_GHI_04SEP2024_1015.tif"
+    },
+    {
+      "filename": "COG_L2C_GHI_04SEP2024_1345.tif",
+      "level": "L2C",
+      "band": "GHI",
+      "date": "04SEP2024",
+      "time": "13:45",
+      "size": 173099,
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L2C_GHI_04SEP2024_1345.tif"
     },
     {
       "filename": "COG_L2C_INS_04SEP2024_1015.tif",
@@ -106,8 +196,17 @@
       "date": "04SEP2024",
       "time": "10:15",
       "size": 2016251,
-      "url": "https://raw-insat-data.s3.ap-south-1.amazonaws.com/COG_L2C_INS_04SEP2024_1015.tif"
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L2C_INS_04SEP2024_1015.tif"
+    },
+    {
+      "filename": "COG_L2C_INS_04SEP2024_1345.tif",
+      "level": "L2C",
+      "band": "INS",
+      "date": "04SEP2024",
+      "time": "13:45",
+      "size": 352871,
+      "url": "https://cog-s3-data.s3.ap-south-1.amazonaws.com/COG_L2C_INS_04SEP2024_1345.tif"
     }
   ],
-  "lastUpdated": "2024-12-07T19:42:46.231320"
+  "lastUpdated": "2024-12-09T13:02:43.056959"
 }

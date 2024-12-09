@@ -96,6 +96,49 @@ export default function About() {
           </div>
         </div>
       </div>
+
+      <footer className="bg-gray-900 text-white mt-20 w-full">
+        <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div>
+              <h3 className="text-xl font-bold mb-4">GEO-NIMBUS</h3>
+              <p className="text-gray-400">
+                Transforming INSAT data into cloud-native formats for advanced geospatial analysis
+              </p>
+            </div>
+            <div>
+              <h4 className="text-lg font-semibold mb-4">Quick Links</h4>
+              <ul className="space-y-2">
+                <li><a href="/" className="text-gray-400 hover:text-white transition-colors">Home</a></li>
+                <li><a href="/about" className="text-gray-400 hover:text-white transition-colors">About</a></li>
+                <li><a href="/visualizer" className="text-gray-400 hover:text-white transition-colors">Visualizer</a></li>
+                <li><a href="/data-view" className="text-gray-400 hover:text-white transition-colors">Data View</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-lg font-semibold mb-4">Technology</h4>
+              <ul className="space-y-2">
+                <li className="text-gray-400">AWS S3</li>
+                <li className="text-gray-400">Cloud-Optimized GeoTIFF</li>
+                <li className="text-gray-400">WebAssembly</li>
+                <li className="text-gray-400">GDAL</li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-lg font-semibold mb-4">Contact</h4>
+              <p className="text-gray-400">
+                For inquiries, please contact:<br />
+                <a href="mailto:info@geo-nimbus.com" className="text-indigo-400 hover:text-indigo-300">
+                  info@geo-nimbus.com
+                </a>
+              </p>
+            </div>
+          </div>
+          <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
+            <p>&copy; {new Date().getFullYear()} GEO-NIMBUS. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }

@@ -84,7 +84,7 @@ export default function CloudUpload() {
       setIsUploading(false)
     }
   }
-
+  
   return (
     <div className="min-h-screen bg-white">
       <Navbar />

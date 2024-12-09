@@ -41,23 +41,39 @@ export async function POST(request: Request) {
     const upload = new Upload({
       client: s3Client,
       params: {
-        Bucket: 'h5-s3-data',
+        Bucket: process.env.AWS_BUCKET_NAME || 'insat-data-bucket',
         Key: filename,
         Body: buffer,
         ContentType: 'application/x-hdf5',
       },
     })
 
-    await upload.done()
-
-    return NextResponse.json({ 
-      success: true, 
-      filename,
-      url: `https://raw-insat-data.s3.${process.env.AWS_REGION}.amazonaws.com/${filename}`
-    })
+    try {
+      await upload.done()
+      
+      return NextResponse.json({ 
+        success: true, 
+        filename,
+        url: `https://${process.env.AWS_BUCKET_NAME || 'insat-data-bucket'}.s3.${process.env.AWS_REGION}.amazonaws.com/${filename}`
+      })
+    } catch (error) {
+      console.error('Upload error:', error)
+      
+      if (error instanceof Error && error.message.includes('ENOTFOUND')) {
+        return NextResponse.json(
+          { error: 'S3 bucket not found. Please check if the bucket exists and is accessible.' },
+          { status: 500 }
+        )
+      }
+      
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Upload failed. Please try again.' },
+        { status: 500 }
+      )
+    }
 
   } catch (error) {
-    console.error('Upload error:', error)
+    console.error('Error:', error)
     return NextResponse.json(
       { error: 'Upload failed' },
       { status: 500 }
