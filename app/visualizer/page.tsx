@@ -16,6 +16,7 @@ import { MapState, TiffFilters, ColorScheme } from './types'
 import BandSelector from '../components/BandSelector'
 import BandControls from '../components/BandControls'
 import BoundingBoxInput from '../components/BoundingBoxInput'
+import BoundingBoxDownload from '../components/BoundingBoxDownload'
 
 export default function Globe() {
   const mapContainer = useRef<HTMLDivElement>(null)
@@ -617,6 +618,11 @@ export default function Globe() {
             onToggleProjection={toggleProjection}
           />
           <div ref={mapContainer} className="w-full h-full" />
+          {/* <div className="absolute top-4 right-4">
+            <BoundingBoxDownload onDownload={(bbox) => {
+              console.log('Downloading region with bbox:', bbox)
+            }} />
+          </div> */}
         </div>
       </div>
     </div>

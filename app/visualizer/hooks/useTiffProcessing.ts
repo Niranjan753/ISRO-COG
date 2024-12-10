@@ -4,7 +4,7 @@ import { TiffData, TiffFilters } from '../types'
 import { COLOR_SCHEMES } from '../utils/colorSchemes'
 import { fromArrayBuffer, writeArrayBuffer } from 'geotiff'
 
-// Helper function to convert HSV to RGB
+
 function HSVtoRGB(h: number, s: number, v: number) {
   let r = 0, g = 0, b = 0
   const i = Math.floor(h * 6)
@@ -56,7 +56,7 @@ export function useTiffProcessing(
       const rasterData = await image.readRasters()
       const data = rasterData[0] as Float32Array | Uint16Array | Uint8Array
       
-      // Get bounding box from image
+    
       const bbox = image.getBoundingBox()
       
       let min = Infinity
@@ -84,7 +84,6 @@ export function useTiffProcessing(
         originalData: data
       }
 
-      // Create initial visualization
       const canvas = document.createElement('canvas')
       canvas.width = width
       canvas.height = height
@@ -106,17 +105,16 @@ export function useTiffProcessing(
       }
 
       ctx.putImageData(imageData, 0, 0)
-      
-      // Add the image source to the map
+
       if (!map.getSource('tiff-layer')) {
         map.addSource('tiff-layer', {
           type: 'image',
           url: canvas.toDataURL(),
           coordinates: [
-            [bbox[0], bbox[3]], // top-left
-            [bbox[2], bbox[3]], // top-right
-            [bbox[2], bbox[1]], // bottom-right
-            [bbox[0], bbox[1]]  // bottom-left
+            [bbox[0], bbox[3]], 
+            [bbox[2], bbox[3]], 
+            [bbox[2], bbox[1]], 
+            [bbox[0], bbox[1]]  
           ]
         })
 
@@ -141,13 +139,13 @@ export function useTiffProcessing(
         })
       }
 
-      // Save TIFF file to public/selected_tiff directory
+      // Save TIFF file to Downloads directory
       try {
         const blob = new Blob([arrayBuffer], { type: 'image/tiff' })
         const link = document.createElement('a')
         const fileName = `selected_tiff_${Date.now()}.tif`
         link.href = URL.createObjectURL(blob)
-        link.download = `public/selected_tiff/${fileName}`
+        link.download = fileName
         link.click()
         URL.revokeObjectURL(link.href) // Clean up the URL object
       } catch (err) {
