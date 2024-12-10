@@ -37,12 +37,12 @@ export default function TiffManipulator({
           <select
             value={filters.colorScheme}
             onChange={(e) => handleFilterChange('colorScheme', e.target.value as ColorScheme)}
-            className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            className="w-full rounded-md border-gray-300 text-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           >
-            <option value="rainbow">Rainbow</option>
-            <option value="thermal">Thermal</option>
-            <option value="grayscale">Grayscale</option>
-            <option value="terrain">Terrain</option>
+            <option className="text-gray-900" value="rainbow">Rainbow</option>
+            <option className="text-gray-900" value="thermal">Thermal</option>
+            <option className="text-gray-900" value="grayscale">Grayscale</option>
+            <option className="text-gray-900" value="terrain">Terrain</option>
           </select>
         </div>
         <div>

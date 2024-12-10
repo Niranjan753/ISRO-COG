@@ -495,7 +495,7 @@ export default function Globe() {
                 type="file"
                 accept=".tif,.tiff"
                 onChange={handleTiffUpload}
-                className="w-full p-2 border border-gray-200 rounded"
+                className="w-full p-2 border border-gray-200 text-gray-700 rounded"
               />
               {fileName && (
                 <p className="mt-2 text-sm text-gray-600">

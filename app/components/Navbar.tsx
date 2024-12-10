@@ -37,6 +37,12 @@ export default function Navbar() {
                 Data View
               </Link>
               <Link
+                href="/cog-tools"
+                className="text-gray-600 hover:text-[#FF6F00] px-3 py-2 rounded-md text-sm font-medium transition-colors"
+              >
+                cog tools
+              </Link>
+              <Link
                 href="/about"
                 className="text-gray-600 hover:text-[#FF6F00] px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >
