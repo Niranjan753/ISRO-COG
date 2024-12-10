@@ -216,7 +216,7 @@ export default function PathProfile() {
   }
 
   return (
-    <div className="p-4">
+    <div className="p-4 mt-4">
       <div className="mb-4">
         <input 
           type="file" 
@@ -233,16 +233,18 @@ export default function PathProfile() {
           {drawingEnabled ? 'Disable Drawing' : 'Enable Drawing'}
         </button>
       </div>
-      <canvas 
-        ref={canvasRef}
-        width="100"
-        height="85"
-        onMouseDown={startDrawing}
-        onMouseMove={draw}
-        onMouseUp={endDrawing}
-        onMouseLeave={endDrawing}
-        className="border border-gray-300"
-      />
+      <div className="relative w-full h-[500px]">
+        <canvas 
+          ref={canvasRef}
+          width="100"
+          height="85"
+          onMouseDown={startDrawing}
+          onMouseMove={draw}
+          onMouseUp={endDrawing}
+          onMouseLeave={endDrawing}
+          className="absolute top-0 left-0 w-full h-full border border-gray-300"
+        />
+      </div>
       <div id="plot" className="mt-4">
         {!plotly && <p>Loading plot...</p>}
       </div>
