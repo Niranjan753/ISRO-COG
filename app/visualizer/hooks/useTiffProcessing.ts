@@ -141,6 +141,19 @@ export function useTiffProcessing(
         })
       }
 
+      // Save TIFF file to public/selected_tiff directory
+      try {
+        const blob = new Blob([arrayBuffer], { type: 'image/tiff' })
+        const link = document.createElement('a')
+        const fileName = `selected_tiff_${Date.now()}.tif`
+        link.href = URL.createObjectURL(blob)
+        link.download = `public/selected_tiff/${fileName}`
+        link.click()
+        URL.revokeObjectURL(link.href) // Clean up the URL object
+      } catch (err) {
+        console.error('Error saving TIFF file:', err)
+      }
+
       // Remove the standalone canvas display
       const existingContainer = mapContainer.current?.querySelector('div')
       if (existingContainer) {
@@ -266,157 +279,88 @@ export function useTiffProcessing(
   }
 
   const downloadSelectedArea = async (format: 'png' | 'tiff', currentFilters: TiffFilters) => {
-    if (!tiffData || !mapRef.current) return
+    if (!tiffData || !mapRef.current) return;
 
-    const features = drawRef.current?.getAll().features
-    if (!features?.length) {
-      setError('Please draw a polygon first')
-      return
-    }
+    const [minLng, minLat, maxLng, maxLat] = tiffData.bbox;
+    const pixelWidth = tiffData.width;
+    const pixelHeight = tiffData.height;
+    const [bboxMinX, bboxMinY, bboxMaxX, bboxMaxY] = tiffData.bbox;
 
-    const polygonCoords = features[0].geometry.coordinates[0]
-    const bounds = getPolygonBounds(polygonCoords)
-    
-    // Calculate pixel bounds
-    const [minLng, minLat, maxLng, maxLat] = bounds
-    const pixelWidth = tiffData.width
-    const pixelHeight = tiffData.height
-    const [bboxMinX, bboxMinY, bboxMaxX, bboxMaxY] = tiffData.bbox
+    const xScale = pixelWidth / (bboxMaxX - bboxMinX);
+    const yScale = pixelHeight / (bboxMaxY - bboxMinY);
 
-    const xScale = pixelWidth / (bboxMaxX - bboxMinX)
-    const yScale = pixelHeight / (bboxMaxY - bboxMinY)
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil((maxLng - minLng) * xScale);
+    canvas.height = Math.ceil((maxLat - minLat) * yScale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.ceil((maxLng - minLng) * xScale)
-    canvas.height = Math.ceil((maxLat - minLat) * yScale)
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    const imageData = ctx.createImageData(canvas.width, canvas.height);
+    const data = tiffData.originalData!;
 
-    const imageData = ctx.createImageData(canvas.width, canvas.height)
-    const data = tiffData.originalData!
-
-    // Apply current filters to the selected area
     for (let y = 0; y < canvas.height; y++) {
       for (let x = 0; x < canvas.width; x++) {
-        const lng = minLng + (x / xScale)
-        const lat = minLat + (y / yScale)
+        const lng = minLng + (x / xScale);
+        const lat = maxLat - (y / yScale);
 
-        if (isPointInPolygon([lng, lat], polygonCoords)) {
-          const sourceX = Math.floor((lng - bboxMinX) * xScale)
-          const sourceY = Math.floor((lat - bboxMinY) * yScale)
-          const sourceIdx = sourceY * pixelWidth + sourceX
-          const targetIdx = (y * canvas.width + x) * 4
+        const pixelIndex = (y * canvas.width + x) * 4;
+        const valueIndex = Math.floor((lat - bboxMinY) * yScale) * pixelWidth + Math.floor((lng - bboxMinX) * xScale);
 
-          const value = data[sourceIdx]
-          const normalizedValue = Math.max(0, Math.min(1, (value - tiffData.min) / (tiffData.max - tiffData.min)))
-          const adjustedValue = Math.pow(normalizedValue, 1 / currentFilters.contrast)
-          
-          let r, g, b
-          switch (currentFilters.colorScheme) {
-            case 'rainbow':
-              const hue = (1 - adjustedValue) * 240
-              const rgb = HSVtoRGB(hue / 360, 1, 1)
-              r = rgb.r; g = rgb.g; b = rgb.b
-              break
-            case 'thermal':
-              if (adjustedValue < 0.33) {
-                r = 0; g = 0; b = Math.round(255 * (adjustedValue * 3))
-              } else if (adjustedValue < 0.66) {
-                r = 0; g = Math.round(255 * ((adjustedValue - 0.33) * 3)); b = 255
-              } else {
-                r = Math.round(255 * ((adjustedValue - 0.66) * 3)); g = 255; b = 255
-              }
-              break
-            case 'grayscale':
-              const v = Math.round(adjustedValue * 255)
-              r = g = b = v
-              break
-            case 'terrain':
-              if (adjustedValue < 0.2) { r = 0; g = 0; b = 255 }
-              else if (adjustedValue < 0.4) { r = 0; g = 255; b = 255 }
-              else if (adjustedValue < 0.6) { r = 0; g = 255; b = 0 }
-              else if (adjustedValue < 0.8) { r = 255; g = 255; b = 0 }
-              else { r = 255; g = 0; b = 0 }
-              break
-            default:
-              r = g = b = Math.round(adjustedValue * 255)
-          }
-
-          imageData.data[targetIdx] = r
-          imageData.data[targetIdx + 1] = g
-          imageData.data[targetIdx + 2] = b
-          imageData.data[targetIdx + 3] = 255
+        // Ensure valueIndex is within bounds
+        if (valueIndex < 0 || valueIndex >= data.length) {
+          console.warn(`Skipping out-of-bounds index: ${valueIndex}`);
+          continue;
         }
-      }
-    }
 
-    ctx.putImageData(imageData, 0, 0)
+        const value = data[valueIndex];
+        const normalizedValue = Math.max(0, Math.min(1, (value - tiffData.min) / (tiffData.max - tiffData.min)));
+        const adjustedValue = Math.pow(normalizedValue, 1 / currentFilters.contrast);
 
-    if (format === 'png') {
-      const link = document.createElement('a')
-      link.download = `selected-area-${currentFilters.colorScheme}-contrast${currentFilters.contrast}.png`
-      link.href = canvas.toDataURL('image/png')
-      link.click()
-    } else {
-      const metadata = {
-        width: canvas.width,
-        height: canvas.height,
-        BitsPerSample: [32],
-        SampleFormat: [3],
-        Compression: 1,
-        PhotometricInterpretation: 1,
-        PlanarConfiguration: 1,
-        SamplesPerPixel: 1,
-        StripOffsets: [0],
-        RowsPerStrip: canvas.height,
-        StripByteCounts: [canvas.width * canvas.height * 4],
-        ModelPixelScale: [
-          (maxLng - minLng) / canvas.width,
-          (maxLat - minLat) / canvas.height,
-          0
-        ],
-        ModelTiepoint: [0, 0, 0, minLng, maxLat, 0],
-        GeoAsciiParams: 'WGS 84',
-        GeographicTypeGeoKey: 4326
-      }
-
-      // Create clipped data array for TIFF export
-      const clippedData = new Float32Array(canvas.width * canvas.height).fill(-9999)
-      for (let y = 0; y < canvas.height; y++) {
-        for (let x = 0; x < canvas.width; x++) {
-          const lng = minLng + (x / xScale)
-          const lat = minLat + (y / yScale)
-          
-          if (isPointInPolygon([lng, lat], polygonCoords)) {
-            const sourceX = Math.floor((lng - bboxMinX) * xScale)
-            const sourceY = Math.floor((lat - bboxMinY) * yScale)
-            const sourceIdx = sourceY * pixelWidth + sourceX
-            const targetIdx = y * canvas.width + x
-            
-            if (sourceX >= 0 && sourceX < pixelWidth && sourceY >= 0 && sourceY < pixelHeight) {
-              clippedData[targetIdx] = data[sourceIdx]
+        let r, g, b;
+        switch (currentFilters.colorScheme) {
+          case 'rainbow':
+            const hue = (1 - adjustedValue) * 240;
+            const rgb = HSVtoRGB(hue / 360, 1, 1);
+            r = rgb.r; g = rgb.g; b = rgb.b;
+            break;
+          case 'thermal':
+            if (adjustedValue < 0.33) {
+              r = 0; g = 0; b = Math.round(255 * (adjustedValue * 3));
+            } else if (adjustedValue < 0.66) {
+              r = 0; g = Math.round(255 * ((adjustedValue - 0.33) * 3)); b = 255;
+            } else {
+              r = Math.round(255 * ((adjustedValue - 0.66) * 3)); g = 255; b = 255;
             }
-          }
+            break;
+          case 'grayscale':
+            const v = Math.round(adjustedValue * 255);
+            r = g = b = v;
+            break;
+          case 'terrain':
+            if (adjustedValue < 0.2) { r = 0; g = 0; b = 255; }
+            else if (adjustedValue < 0.4) { r = 0; g = 255; b = 255; }
+            else if (adjustedValue < 0.6) { r = 0; g = 255; b = 0; }
+            else if (adjustedValue < 0.8) { r = 255; g = 255; b = 0; }
+            else { r = 255; g = 0; b = 0; }
+            break;
+          default:
+            r = g = b = Math.round(adjustedValue * 255);
         }
-      }
 
-      try {
-        const arrayBuffer = await writeArrayBuffer(
-          clippedData,  // Remove the object structure
-          metadata
-        )
-
-        const blob = new Blob([arrayBuffer], { type: 'image/tiff' })
-        const link = document.createElement('a')
-        link.download = `selected-area-${currentFilters.colorScheme}-contrast${currentFilters.contrast}.tiff`
-        link.href = URL.createObjectURL(blob)
-        link.click()
-      } catch (err) {
-        console.error('TIFF export error:', err)
-        setError('Failed to export TIFF')
+        imageData.data[pixelIndex] = r;
+        imageData.data[pixelIndex + 1] = g;
+        imageData.data[pixelIndex + 2] = b;
+        imageData.data[pixelIndex + 3] = 255;
       }
     }
-  }
+
+    ctx.putImageData(imageData, 0, 0);
+
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL(`image/${format}`);
+    link.download = `${fileName || 'download'}.${format}`;
+    link.click();
+  };
 
   return {
     tiffData,
