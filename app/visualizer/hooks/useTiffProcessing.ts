@@ -4,7 +4,6 @@ import { TiffData, TiffFilters } from '../types'
 import { COLOR_SCHEMES } from '../utils/colorSchemes'
 import { fromArrayBuffer, writeArrayBuffer } from 'geotiff'
 
-
 function HSVtoRGB(h: number, s: number, v: number) {
   let r = 0, g = 0, b = 0
   const i = Math.floor(h * 6)
@@ -56,7 +55,6 @@ export function useTiffProcessing(
       const rasterData = await image.readRasters()
       const data = rasterData[0] as Float32Array | Uint16Array | Uint8Array
       
-    
       const bbox = image.getBoundingBox()
       
       let min = Infinity
@@ -95,12 +93,11 @@ export function useTiffProcessing(
       for (let i = 0; i < data.length; i++) {
         const value = data[i]
         const normalizedValue = (value - min) / (max - min)
-        const hue = (1 - normalizedValue) * 240
-        const rgb = HSVtoRGB(hue / 360, 1, 1)
+        const grayValue = Math.round(normalizedValue * 255)
         
-        imageData.data[i * 4] = rgb.r
-        imageData.data[i * 4 + 1] = rgb.g
-        imageData.data[i * 4 + 2] = rgb.b
+        imageData.data[i * 4] = grayValue
+        imageData.data[i * 4 + 1] = grayValue
+        imageData.data[i * 4 + 2] = grayValue
         imageData.data[i * 4 + 3] = 255
       }
 
@@ -139,7 +136,6 @@ export function useTiffProcessing(
         })
       }
 
-      // Save TIFF file to Downloads directory
       try {
         const blob = new Blob([arrayBuffer], { type: 'image/tiff' })
         const link = document.createElement('a')
@@ -147,18 +143,16 @@ export function useTiffProcessing(
         link.href = URL.createObjectURL(blob)
         link.download = fileName
         link.click()
-        URL.revokeObjectURL(link.href) // Clean up the URL object
+        URL.revokeObjectURL(link.href)
       } catch (err) {
         console.error('Error saving TIFF file:', err)
       }
 
-      // Remove the standalone canvas display
       const existingContainer = mapContainer.current?.querySelector('div')
       if (existingContainer) {
         existingContainer.remove()
       }
 
-      // Fly to the TIFF data extent
       map.fitBounds([
         [bbox[0], bbox[1]],
         [bbox[2], bbox[3]]
@@ -198,6 +192,10 @@ export function useTiffProcessing(
         
         let r, g, b
         switch (filters.colorScheme) {
+          case 'grayscale':
+            const v = Math.round(adjustedValue * 255)
+            r = g = b = v
+            break
           case 'rainbow':
             const hue = (1 - adjustedValue) * 240
             const rgb = HSVtoRGB(hue / 360, 1, 1)
@@ -211,10 +209,6 @@ export function useTiffProcessing(
             } else {
               r = Math.round(255 * ((adjustedValue - 0.66) * 3)); g = 255; b = 255
             }
-            break
-          case 'grayscale':
-            const v = Math.round(adjustedValue * 255)
-            r = g = b = v
             break
           case 'terrain':
             if (adjustedValue < 0.2) { r = 0; g = 0; b = 255 }
@@ -304,7 +298,6 @@ export function useTiffProcessing(
         const pixelIndex = (y * canvas.width + x) * 4;
         const valueIndex = Math.floor((lat - bboxMinY) * yScale) * pixelWidth + Math.floor((lng - bboxMinX) * xScale);
 
-        // Ensure valueIndex is within bounds
         if (valueIndex < 0 || valueIndex >= data.length) {
           console.warn(`Skipping out-of-bounds index: ${valueIndex}`);
           continue;
@@ -316,6 +309,10 @@ export function useTiffProcessing(
 
         let r, g, b;
         switch (currentFilters.colorScheme) {
+          case 'grayscale':
+            const v = Math.round(adjustedValue * 255);
+            r = g = b = v;
+            break;
           case 'rainbow':
             const hue = (1 - adjustedValue) * 240;
             const rgb = HSVtoRGB(hue / 360, 1, 1);
@@ -329,10 +326,6 @@ export function useTiffProcessing(
             } else {
               r = Math.round(255 * ((adjustedValue - 0.66) * 3)); g = 255; b = 255;
             }
-            break;
-          case 'grayscale':
-            const v = Math.round(adjustedValue * 255);
-            r = g = b = v;
             break;
           case 'terrain':
             if (adjustedValue < 0.2) { r = 0; g = 0; b = 255; }

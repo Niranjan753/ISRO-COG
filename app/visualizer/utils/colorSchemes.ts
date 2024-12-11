@@ -11,8 +11,22 @@ export const COLOR_SCHEMES: Record<ColorScheme, (value: number) => [number, numb
     return [Math.round(255 * ((value - 0.66) * 3)), 255, 255]
   },
   grayscale: (value: number) => {
-    const v = Math.round(value * 255)
-    return [v, v, v]
+    // Enhanced grayscale implementation with gamma correction and contrast stretching
+    const gamma = 1.2; // Slight gamma correction for better midtone detail
+    const contrast = 1.1; // Subtle contrast enhancement
+    
+    // Apply gamma correction
+    const gammaValue = Math.pow(value, 1/gamma);
+    
+    // Apply contrast stretching
+    const contrastedValue = (gammaValue - 0.5) * contrast + 0.5;
+    
+    // Clamp values to valid range
+    const clampedValue = Math.max(0, Math.min(1, contrastedValue));
+    
+    // Convert to 8-bit grayscale
+    const v = Math.round(clampedValue * 255);
+    return [v, v, v];
   },
   terrain: (value: number) => {
     if (value < 0.2) return [0, 0, 255]

@@ -13,7 +13,7 @@ export default function TiffManipulator({
   initialData
 }: TiffManipulatorProps) {
   const [filters, setFilters] = useState<TiffFilters>({
-    colorScheme: 'rainbow',
+    colorScheme: 'grayscale',
     contrast: 1
   })
 
@@ -39,9 +39,9 @@ export default function TiffManipulator({
             onChange={(e) => handleFilterChange('colorScheme', e.target.value as ColorScheme)}
             className="w-full rounded-md border-gray-300 text-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           >
-            <option className="text-gray-900" value="rainbow">Rainbow</option>
-            <option className="text-gray-900" value="thermal">Thermal</option>
             <option className="text-gray-900" value="grayscale">Grayscale</option>
+            <option className="text-gray-900" value="thermal">Thermal</option>
+            <option className="text-gray-900" value="rainbow">Rainbow</option>
             <option className="text-gray-900" value="terrain">Terrain</option>
           </select>
         </div>

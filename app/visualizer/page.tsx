@@ -339,7 +339,7 @@ export default function Globe() {
       const currentZoom = map.current.getZoom();
       const currentCenter = map.current.getCenter();
       const currentPitch = map.current.getPitch();
-      const currentBearing = map.current.getBearing();
+      const currentBearing = map.current.getBearing
 
       // Remove existing layers and sources first
       if (map.current.getLayer('tiff-layer')) {
@@ -366,6 +366,27 @@ export default function Globe() {
           
           // Ensure map updates properly
           if (map.current) {
+            // Add the new source and layer
+            map.current.addSource('tiff-source', {
+              type: 'raster',
+              tiles: [selectedFile.url],
+              tileSize: 256,
+            });
+
+            map.current.addLayer({
+              id: 'tiff-layer',
+              type: 'raster',
+              source: 'tiff-source',
+              paint: {
+                'raster-opacity': 1,
+                'raster-hue-rotate': 0,
+                'raster-saturation': 0, // Set saturation to 0 for grayscale
+                'raster-contrast': 0,
+                'raster-brightness-min': 0,
+                'raster-brightness-max': 1,
+              },
+            });
+
             // Restore the previous view state
             map.current.setZoom(currentZoom);
             map.current.setCenter(currentCenter);
