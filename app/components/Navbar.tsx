@@ -25,6 +25,12 @@ export default function Navbar() {
                 Admin
               </Link>
               <Link
+                href="/partial-download"
+                className="text-gray-600 hover:text-[#FF6F00] px-3 py-2 rounded-md text-sm font-medium transition-colors"
+              >
+                Partial Download
+              </Link>
+              <Link
                 href="/visualizer"
                 className="text-gray-600 hover:text-[#FF6F00] px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >

@@ -4,40 +4,29 @@ import { useState } from 'react'
 
 interface BoundingBoxDownloadProps {
   onDownload: (bbox: [number, number, number, number]) => void;
+  bbox: [number, number, number, number] | null;
+  fileName: string;
 }
 
-export default function BoundingBoxDownload({ onDownload }: BoundingBoxDownloadProps) {
-  const [bbox, setBbox] = useState<[number, number, number, number]>([0, 0, 0, 0])
+export default function BoundingBoxDownload({ onDownload, bbox, fileName }: BoundingBoxDownloadProps) {
+  const [localBbox, setLocalBbox] = useState<[number, number, number, number]>(bbox || [0, 0, 0, 0])
 
-  const handleDownload = async () => {
-    try {
-      const response = await fetch('/api/download-region', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          bbox,
-          tifFile: 'public/selected_tiff/latest.tif', // This will be the latest downloaded TIFF
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to download region')
-      }
-
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'selected_region.tif'
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-    } catch (error) {
-      console.error('Error downloading region:', error)
+  const handleDownload = () => {
+    if (!bbox) {
+      console.error('Bounding box is not set');
+      return;
     }
+
+    // Navigate to partial-download page with bbox coordinates and file name
+    const searchParams = new URLSearchParams({
+      north: bbox[3].toString(),
+      south: bbox[1].toString(),
+      east: bbox[2].toString(),
+      west: bbox[0].toString(),
+      fileName,
+      filePath: `/path/to/your/tiff/files/${fileName}` // Adjust this path as needed
+    });
+    window.location.href = `/partial-download?${searchParams.toString()}`;
   }
 
   return (
@@ -48,8 +37,8 @@ export default function BoundingBoxDownload({ onDownload }: BoundingBoxDownloadP
           <label className="block text-sm font-medium text-gray-700">Min Longitude</label>
           <input
             type="number"
-            value={bbox[0]}
-            onChange={(e) => setBbox([parseFloat(e.target.value), bbox[1], bbox[2], bbox[3]])}
+            value={localBbox[0]}
+            onChange={(e) => setLocalBbox([parseFloat(e.target.value), localBbox[1], localBbox[2], localBbox[3]])}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             step="0.0001"
           />
@@ -58,8 +47,8 @@ export default function BoundingBoxDownload({ onDownload }: BoundingBoxDownloadP
           <label className="block text-sm font-medium text-gray-700">Min Latitude</label>
           <input
             type="number"
-            value={bbox[1]}
-            onChange={(e) => setBbox([bbox[0], parseFloat(e.target.value), bbox[2], bbox[3]])}
+            value={localBbox[1]}
+            onChange={(e) => setLocalBbox([localBbox[0], parseFloat(e.target.value), localBbox[2], localBbox[3]])}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             step="0.0001"
           />
@@ -68,8 +57,8 @@ export default function BoundingBoxDownload({ onDownload }: BoundingBoxDownloadP
           <label className="block text-sm font-medium text-gray-700">Max Longitude</label>
           <input
             type="number"
-            value={bbox[2]}
-            onChange={(e) => setBbox([bbox[0], bbox[1], parseFloat(e.target.value), bbox[3]])}
+            value={localBbox[2]}
+            onChange={(e) => setLocalBbox([localBbox[0], localBbox[1], parseFloat(e.target.value), localBbox[3]])}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             step="0.0001"
           />
@@ -78,8 +67,8 @@ export default function BoundingBoxDownload({ onDownload }: BoundingBoxDownloadP
           <label className="block text-sm font-medium text-gray-700">Max Latitude</label>
           <input
             type="number"
-            value={bbox[3]}
-            onChange={(e) => setBbox([bbox[0], bbox[1], bbox[2], parseFloat(e.target.value)])}
+            value={localBbox[3]}
+            onChange={(e) => setLocalBbox([localBbox[0], localBbox[1], localBbox[2], parseFloat(e.target.value)])}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             step="0.0001"
           />

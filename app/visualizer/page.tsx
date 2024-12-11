@@ -78,15 +78,15 @@ export default function Globe() {
       drawRef.current = new MapboxDraw({
         displayControlsDefault: false,
         controls: {
-          polygon: false,
+          polygon: true,
           line_string: false,
           point: false,
           trash: true,
-          rectangle: true
+          rectangle: false
         },
         modes: {
           ...MapboxDraw.modes,
-          draw_rectangle: MapboxDraw.modes.draw_polygon
+          draw_polygon: MapboxDraw.modes.draw_polygon
         }
       });
 
@@ -99,29 +99,24 @@ export default function Globe() {
 
     return () => {
       if (map.current && drawRef.current) {
-        map.current.removeControl(drawRef.current);
-        drawRef.current = null;
+        map.current.off('draw.create', handleDrawCreate);
+        map.current.off('draw.delete', handleDrawDelete);
       }
     };
   }, [map.current]);
 
-  const handleDrawCreate = (e: { features: any[] }) => {
-    if (!e.features?.length) return;
-    
-    const coordinates = e.features[0].geometry.coordinates[0];
-    const bounds = coordinates.reduce(
-      (bounds: number[], coord: number[]) => {
-        return [
-          Math.min(bounds[0], coord[0]), // west
-          Math.min(bounds[1], coord[1]), // south
-          Math.max(bounds[2], coord[0]), // east
-          Math.max(bounds[3], coord[1])  // north
-        ];
-      },
-      [Infinity, Infinity, -Infinity, -Infinity]
-    );
-    
-    setDrawnBbox(bounds as [number, number, number, number]);
+  const handleDrawCreate = (e: any) => {
+    const features = e.features[0];
+    if (features.geometry.type === 'Polygon') {
+      const coordinates = features.geometry.coordinates[0];
+      const bbox = [
+        Math.min(...coordinates.map((c: any) => c[0])), // min longitude
+        Math.min(...coordinates.map((c: any) => c[1])), // min latitude
+        Math.max(...coordinates.map((c: any) => c[0])), // max longitude
+        Math.max(...coordinates.map((c: any) => c[1])), // max latitude
+      ];
+      setDrawnBbox(bbox);
+    }
   };
 
   const handleDrawDelete = () => {
@@ -494,15 +489,15 @@ export default function Globe() {
       drawRef.current = new MapboxDraw({
         displayControlsDefault: false,
         controls: {
-          polygon: false,
+          polygon: true,
           line_string: false,
           point: false,
           trash: true,
-          rectangle: true
+          rectangle: false
         },
         modes: {
           ...MapboxDraw.modes,
-          draw_rectangle: MapboxDraw.modes.draw_polygon
+          draw_polygon: MapboxDraw.modes.draw_polygon
         }
       });
 
@@ -515,8 +510,8 @@ export default function Globe() {
 
     return () => {
       if (map.current && drawRef.current) {
-        map.current.removeControl(drawRef.current);
-        drawRef.current = null;
+        map.current.off('draw.create', handleDrawCreate);
+        map.current.off('draw.delete', handleDrawDelete);
       }
     };
   }, [map.current]);
@@ -635,9 +630,48 @@ export default function Globe() {
             {tiffData && (
               <div className="space-y-4">
                 <BoundingBoxInput
-                  onDownload={handleBboxDownload}
                   currentBbox={drawnBbox}
+                  onBboxChange={setDrawnBbox}
                 />
+                <button
+                  onClick={() => {
+                    // Pass bounding box values to Download Selected Region
+                    if (drawnBbox) {
+                      setDrawnBbox(drawnBbox);
+                      // Here we can directly pass the values to the download component
+                      // Assuming downloadSelectedArea is a function that initiates the download
+                      downloadSelectedArea('tiff', { bbox: drawnBbox, fileName });
+                    }
+                  }}
+                  className="mt-2 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                  Pass to Download Selected Region
+                </button>
+                <BoundingBoxDownload
+                  onDownload={() => {}}
+                  bbox={drawnBbox}
+                  fileName={fileName}
+                />
+                <div className="p-4 bg-white rounded-lg shadow">
+                  <h3 className="font-semibold text-lg mb-4 text-gray-900">Download Selected Region</h3>
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-600">Draw a polygon on the map to select an area first</p>
+                    <div className="space-x-4">
+                      <button
+                        onClick={() => downloadSelectedArea('png', filters)}
+                        className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                      >
+                        Download PNG
+                      </button>
+                      <button
+                        onClick={() => downloadSelectedArea('tiff', filters)}
+                        className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                      >
+                        Download TIFF
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <div className="p-4 bg-white rounded-lg shadow">
                   <h3 className="font-semibold text-lg mb-4 text-gray-900">Visualization Settings</h3>
                   <div className="space-y-4">
@@ -646,7 +680,7 @@ export default function Globe() {
                       <select
                         value={filters.colorScheme}
                         onChange={(e) => handleFilterChange('colorScheme', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       >
                         <option value="rainbow">Rainbow</option>
                         <option value="thermal">Thermal</option>
@@ -666,7 +700,7 @@ export default function Globe() {
                         className="mt-1 block w-full"
                       />
                     </div>
-                    <div>
+                    {/* <div>
                       <label className="block text-sm font-medium text-gray-700">Color Scheme</label>
                       <select
                         value={filters.colorScheme}
@@ -678,7 +712,7 @@ export default function Globe() {
                         <option value="grayscale">Grayscale</option>
                         <option value="terrain">Terrain</option>
                       </select>
-                    </div>
+                    </div> */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
                         Contrast ({filters.contrast.toFixed(1)})
@@ -727,7 +761,7 @@ export default function Globe() {
                   </div>
                 </div>
 
-                <div className="p-4 bg-white rounded-lg shadow">
+                {/* <div className="p-4 bg-white rounded-lg shadow">
                   <h3 className="font-semibold text-lg mb-4 text-gray-900">Download Selected Area</h3>
                   <div className="space-y-2">
                     <p className="text-sm text-gray-600">Draw a polygon on the map to select an area first</p>
@@ -746,7 +780,7 @@ export default function Globe() {
                       </button>
                     </div>
                   </div>
-                </div>
+                </div> */}
 
                 {/* <BoundingBoxInput
                   onDownload={handleBboxDownload}

@@ -32,7 +32,7 @@ interface BoundingBoxInputProps {
               type="number"
               value={bbox[0]}
               onChange={(e) => handleInputChange(0, e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
               step="0.0001"
             />
           </div>
@@ -42,7 +42,7 @@ interface BoundingBoxInputProps {
               type="number"
               value={bbox[1]}
               onChange={(e) => handleInputChange(1, e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
               step="0.0001"
             />
           </div>
@@ -52,7 +52,7 @@ interface BoundingBoxInputProps {
               type="number"
               value={bbox[2]}
               onChange={(e) => handleInputChange(2, e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border-gray-300 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500"
               step="0.0001"
             />
           </div>
@@ -62,7 +62,7 @@ interface BoundingBoxInputProps {
               type="number"
               value={bbox[3]}
               onChange={(e) => handleInputChange(3, e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
               step="0.0001"
             />
           </div>

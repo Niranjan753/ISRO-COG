@@ -32,9 +32,7 @@ export default function TiffManipulator({
       
       <div className="space-y-4">
         <div>
-          <label className="block text-sm mb-1 text-gray-700">
-            Color Scheme
-          </label>
+          <label className="block text-sm mb-1 text-gray-700">Color Scheme</label>
           <select
             value={filters.colorScheme}
             onChange={(e) => handleFilterChange('colorScheme', e.target.value as ColorScheme)}
@@ -58,7 +56,7 @@ export default function TiffManipulator({
             step="0.1"
             value={filters.contrast}
             onChange={(e) => handleFilterChange('contrast', parseFloat(e.target.value))}
-            className="w-full"
+            className="w-full text-gray-700"
           />
         </div>
 
@@ -73,7 +71,7 @@ export default function TiffManipulator({
             step="0.01"
             value={filters.opacity}
             onChange={(e) => handleFilterChange('opacity', parseFloat(e.target.value))}
-            className="w-full"
+            className="w-full text-gray-700"
           />
         </div>
       </div>
