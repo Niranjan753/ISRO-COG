@@ -14,7 +14,8 @@ export default function TiffManipulator({
 }: TiffManipulatorProps) {
   const [filters, setFilters] = useState<TiffFilters>({
     colorScheme: 'grayscale',
-    contrast: 1
+    contrast: 1,
+    opacity: 1
   })
 
   const handleFilterChange = (key: keyof TiffFilters, value: any) => {
@@ -45,6 +46,7 @@ export default function TiffManipulator({
             <option className="text-gray-900" value="terrain">Terrain</option>
           </select>
         </div>
+
         <div>
           <label className="block text-sm mb-1 text-gray-700">
             Contrast ({filters.contrast.toFixed(1)})
@@ -56,6 +58,21 @@ export default function TiffManipulator({
             step="0.1"
             value={filters.contrast}
             onChange={(e) => handleFilterChange('contrast', parseFloat(e.target.value))}
+            className="w-full"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm mb-1 text-gray-700">
+            Opacity ({filters.opacity.toFixed(2)})
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={filters.opacity}
+            onChange={(e) => handleFilterChange('opacity', parseFloat(e.target.value))}
             className="w-full"
           />
         </div>

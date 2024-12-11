@@ -19,4 +19,5 @@ export type TiffData = {
   export type TiffFilters = {
     colorScheme: ColorScheme
     contrast: number
+    opacity: number
   }

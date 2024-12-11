@@ -33,7 +33,8 @@ export default function Globe() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [filters, setFilters] = useState<TiffFilters>({
     colorScheme: 'rainbow',
-    contrast: 1
+    contrast: 1,
+    opacity: 1
   })
   const searchParams = useSearchParams()
   const [selectedBand, setSelectedBand] = useState<string>('');
@@ -244,6 +245,11 @@ export default function Globe() {
     setFilters(newFilters)
     if (!map.current) return
     applyFilters(newFilters, map.current)
+
+    // Update TIFF layer opacity
+    if (map.current.getLayer('tiff-layer')) {
+      map.current.setPaintProperty('tiff-layer', 'raster-opacity', newFilters.opacity);
+    }
   }
 
   const toggleView = () => {
@@ -406,7 +412,7 @@ export default function Globe() {
     if (!showBoundary) {
       try {
         // Load shapefile using our existing utility
-        const geojsonData = await loadShapefile("C:\Users\cmrnn\Downloads\India_Country_Boundary.shp");
+        const geojsonData = await loadShapefile("C:/Users/cmrnn/Downloads/India_Country_Boundary.shp");
 
         // Add source if it doesn't exist
         if (!map.current.getSource('boundary-source')) {
@@ -424,9 +430,13 @@ export default function Globe() {
             source: 'boundary-source',
             paint: {
               'fill-color': 'rgba(0, 0, 255, 0.1)',
-              'fill-outline-color': '#000'
+              'fill-outline-color': '#000',
+              'fill-opacity': filters.opacity
             }
           });
+        } else {
+          // Update existing layer opacity
+          map.current.setPaintProperty('boundary-fill', 'fill-opacity', filters.opacity);
         }
 
         // Add line layer if it doesn't exist
@@ -437,9 +447,13 @@ export default function Globe() {
             source: 'boundary-source',
             paint: {
               'line-color': '#000',
-              'line-width': 2
+              'line-width': 2,
+              'line-opacity': filters.opacity
             }
           });
+        } else {
+          // Update existing layer opacity
+          map.current.setPaintProperty('boundary-line', 'line-opacity', filters.opacity);
         }
 
         setShowBoundary(true);
@@ -459,7 +473,53 @@ export default function Globe() {
       }
       setShowBoundary(false);
     }
-  }, [showBoundary]);
+  }, [showBoundary, filters.opacity]);
+
+  useEffect(() => {
+    if (!map.current || !showBoundary) return;
+
+    if (map.current.getLayer('boundary-fill')) {
+      map.current.setPaintProperty('boundary-fill', 'fill-opacity', filters.opacity);
+    }
+    if (map.current.getLayer('boundary-line')) {
+      map.current.setPaintProperty('boundary-line', 'line-opacity', filters.opacity);
+    }
+  }, [filters.opacity, showBoundary]);
+
+  useEffect(() => {
+    if (!map.current || drawRef.current) return;
+
+    // Initialize draw control only after map is loaded
+    map.current.once('load', () => {
+      drawRef.current = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: {
+          polygon: false,
+          line_string: false,
+          point: false,
+          trash: true,
+          rectangle: true
+        },
+        modes: {
+          ...MapboxDraw.modes,
+          draw_rectangle: MapboxDraw.modes.draw_polygon
+        }
+      });
+
+      map.current?.addControl(drawRef.current);
+
+      // Add draw event listeners
+      map.current?.on('draw.create', handleDrawCreate);
+      map.current?.on('draw.delete', handleDrawDelete);
+    });
+
+    return () => {
+      if (map.current && drawRef.current) {
+        map.current.removeControl(drawRef.current);
+        drawRef.current = null;
+      }
+    };
+  }, [map.current]);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -581,6 +641,31 @@ export default function Globe() {
                 <div className="p-4 bg-white rounded-lg shadow">
                   <h3 className="font-semibold text-lg mb-4 text-gray-900">Visualization Settings</h3>
                   <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Color Scheme</label>
+                      <select
+                        value={filters.colorScheme}
+                        onChange={(e) => handleFilterChange('colorScheme', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      >
+                        <option value="rainbow">Rainbow</option>
+                        <option value="thermal">Thermal</option>
+                        <option value="grayscale">Grayscale</option>
+                        <option value="terrain">Terrain</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Opacity</label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={filters.opacity}
+                        onChange={(e) => handleFilterChange('opacity', parseFloat(e.target.value))}
+                        className="mt-1 block w-full"
+                      />
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Color Scheme</label>
                       <select
