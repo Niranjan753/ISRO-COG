@@ -119,7 +119,7 @@ export default function PartialDownload() {
   return (
     <>
       <Navbar />
-      <div className="min-h-screen bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-gray-100 py-12 mt-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6">
           <h2 className="text-2xl font-bold mb-6 text-gray-900">Partial Download</h2>
           
@@ -167,7 +167,7 @@ export default function PartialDownload() {
                   value={formData.north}
                   onChange={handleChange}
                   placeholder="e.g., 35.0"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md text-gray-700 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   required
                 />
               </div>
@@ -184,7 +184,7 @@ export default function PartialDownload() {
                   value={formData.south}
                   onChange={handleChange}
                   placeholder="e.g., 8.0"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md text-gray-700 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   required
                 />
               </div>
@@ -201,7 +201,7 @@ export default function PartialDownload() {
                   value={formData.east}
                   onChange={handleChange}
                   placeholder="e.g., 97.0"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md text-gray-700 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   required
                 />
               </div>
@@ -218,7 +218,7 @@ export default function PartialDownload() {
                   value={formData.west}
                   onChange={handleChange}
                   placeholder="e.g., 68.0"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md text-gray-700 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   required
                 />
               </div>

@@ -288,9 +288,9 @@ export default function Globe() {
       // Create a new map instance with current projection
       const newMap = new mapboxgl.Map({
         container: mapContainer.current!,
-        style: 'mapbox://styles/mapbox/satellite-v9',
-        center: [0, 20],
-        zoom: 2,
+        style: 'mapbox://styles/mapbox/light-v11',
+        center: [78.9629, 20.5937], // Centered on India
+        zoom: 4,
         projection: mapState.isMercator ? 'mercator' : 'globe',
         renderWorldCopies: true,
         preserveDrawingBuffer: true
@@ -307,13 +307,43 @@ export default function Globe() {
       // Add controls to new map
       newMap.addControl(new mapboxgl.NavigationControl());
 
-      // Set fog for globe view
+      // Set light theme fog configuration
       newMap.setFog({
-        color: 'rgb(186, 210, 235)',
-        'high-color': 'rgb(36, 92, 223)',
-        'horizon-blend': 0.02,
-        'space-color': 'rgb(11, 11, 25)',
-        'star-intensity': 0.6
+        color: 'rgb(0, 0, 0)',
+        'high-color': 'rgb(0, 0, 0)',
+        'horizon-blend': 0.4,
+        'space-color': 'rgb(0, 0, 0)',
+        'star-intensity': 0.8
+      });
+
+      // Wait for style to be fully loaded
+      newMap.once('style.load', () => {
+        // Get all layers
+        const layers = newMap.getStyle().layers;
+        
+        // Set all background and fill layers to black
+        layers.forEach(layer => {
+          if (layer.type === 'background' || layer.type === 'fill') {
+            newMap.setPaintProperty(layer.id, `${layer.type}-color`, '#000000');
+          }
+          // Set all line layers to white
+          if (layer.type === 'line') {
+            newMap.setPaintProperty(layer.id, 'line-color', '#ffffff');
+            // Adjust line width based on importance
+            if (layer.id.includes('admin-0')) {
+              newMap.setPaintProperty(layer.id, 'line-width', 1.5);
+            } else if (layer.id.includes('admin-1')) {
+              newMap.setPaintProperty(layer.id, 'line-width', 0.8);
+            }
+          }
+        });
+
+        // Set light settings for contrast
+        newMap.setLight({
+          intensity: 0.6,
+          color: '#ffffff',
+          anchor: 'map'
+        });
       });
 
       // Update the map reference
@@ -377,7 +407,7 @@ export default function Globe() {
 
             // Force style reload if needed
             if (!map.current.getStyle()) {
-              map.current.setStyle('mapbox://styles/mapbox/satellite-v9');
+              map.current.setStyle('mapbox://styles/mapbox/light-v11');
               await new Promise<void>((resolve) => {
                 map.current!.once('style.load', () => resolve());
               });
@@ -523,16 +553,69 @@ export default function Globe() {
 
     const newMap = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/satellite-v9',
+      style: 'mapbox://styles/mapbox/light-v11',
       center: [78.9629, 20.5937], // Centered on India
       zoom: 4,
-      projection: 'mercator',
+      projection: 'globe',
       renderWorldCopies: true,
-      preserveDrawingBuffer: true
+      preserveDrawingBuffer: true,
+      customAttribution: 'EPSG:4326 - WGS 84'
     });
 
     newMap.on('load', () => {
       handleMapLoad(newMap);
+
+      // Wait for style to be fully loaded
+      newMap.once('style.load', () => {
+        // Get all layers
+        const layers = newMap.getStyle().layers;
+        
+        // Update polygon style
+        layers.forEach(layer => {
+          if (layer.id.includes('gl-draw-polygon')) {
+            newMap.setPaintProperty(layer.id, 'fill-color', '#ff0000'); // Red fill
+            newMap.setPaintProperty(layer.id, 'fill-opacity', 2); // 40% opacity
+            newMap.setPaintProperty(layer.id, 'fill-outline-color', '#000000'); // Black outline
+            newMap.setPaintProperty(layer.id, 'line-width', 2); // 2px outline width
+          }
+        });
+
+        // Set all background and fill layers to white
+        layers.forEach(layer => {
+          if (layer.type === 'background' || layer.type === 'fill') {
+            newMap.setPaintProperty(layer.id, `${layer.type}-color`, '#ffffff');
+          }
+          // Set all line layers to black
+          if (layer.type === 'line') {
+            newMap.setPaintProperty(layer.id, 'line-color', '#000000');
+            newMap.setPaintProperty(layer.id, 'line-width', 1);
+          }
+          // Remove any symbol or icon layers for cleaner look
+          if (layer.type === 'symbol' || layer.type === 'icon') {
+            newMap.removeLayer(layer.id);
+          }
+        });
+
+        // Set light settings for clean look
+        newMap.setLight({
+          intensity: 0.7,
+          color: '#ffffff',
+          anchor: 'map'
+        });
+
+        // Set fog settings for clean white look
+        newMap.setFog({
+          'horizon-blend': 0.2,
+          'star-intensity': 0,
+          'space-color': '#ffffff',
+          color: '#ffffff',
+          'high-color': '#ffffff'
+        });
+
+        // Remove terrain and unnecessary layers
+        if (newMap.getLayer('hillshade')) newMap.removeLayer('hillshade');
+        if (newMap.getLayer('terrain')) newMap.removeLayer('terrain');
+      });
     });
 
     newMap.addControl(new mapboxgl.NavigationControl());
@@ -635,20 +718,22 @@ export default function Globe() {
                 />
                 <button
                   onClick={() => {
-                    // Pass bounding box values to Download Selected Region
-                    if (drawnBbox) {
-                      setDrawnBbox(drawnBbox);
-                      // Here we can directly pass the values to the download component
-                      // Assuming downloadSelectedArea is a function that initiates the download
-                      downloadSelectedArea('tiff', { bbox: drawnBbox, fileName });
+                    if (drawnBbox && fileName) {
+                      handleBboxDownload(drawnBbox);
+                    } else {
+                      setLoadError('Please draw a bounding box and select a file first');
                     }
                   }}
-                  className="mt-2 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  className="mt-2 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
+                  disabled={!drawnBbox || !fileName}
                 >
                   Pass to Download Selected Region
                 </button>
+                {loadError && (
+                  <div className="text-red-500 text-sm mt-2">{loadError}</div>
+                )}
                 <BoundingBoxDownload
-                  onDownload={() => {}}
+                  onDownload={handleBboxDownload}
                   bbox={drawnBbox}
                   fileName={fileName}
                 />
@@ -700,19 +785,6 @@ export default function Globe() {
                         className="mt-1 block w-full"
                       />
                     </div>
-                    {/* <div>
-                      <label className="block text-sm font-medium text-gray-700">Color Scheme</label>
-                      <select
-                        value={filters.colorScheme}
-                        onChange={(e) => handleFilterChange('colorScheme', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                      >
-                        <option value="rainbow">Rainbow</option>
-                        <option value="thermal">Thermal</option>
-                        <option value="grayscale">Grayscale</option>
-                        <option value="terrain">Terrain</option>
-                      </select>
-                    </div> */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
                         Contrast ({filters.contrast.toFixed(1)})
@@ -761,32 +833,6 @@ export default function Globe() {
                   </div>
                 </div>
 
-                {/* <div className="p-4 bg-white rounded-lg shadow">
-                  <h3 className="font-semibold text-lg mb-4 text-gray-900">Download Selected Area</h3>
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-600">Draw a polygon on the map to select an area first</p>
-                    <div className="space-x-4">
-                      <button
-                        onClick={() => downloadSelectedArea('png', filters)}
-                        className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                      >
-                        Download PNG
-                      </button>
-                      <button
-                        onClick={() => downloadSelectedArea('tiff', filters)}
-                        className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-                      >
-                        Download TIFF
-                      </button>
-                    </div>
-                  </div>
-                </div> */}
-
-                {/* <BoundingBoxInput
-                  onDownload={handleBboxDownload}
-                  currentBbox={drawnBbox}
-                /> */}
-                
               </div>
             )}
           </div>

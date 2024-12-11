@@ -3,9 +3,10 @@ import { useState, useEffect } from "react";
 interface BoundingBoxInputProps {
     onDownload: (bbox: [number, number, number, number]) => void;
     currentBbox?: [number, number, number, number];
+    fileName: string;
   }
   
-  export default function BoundingBoxInput({ onDownload, currentBbox }: BoundingBoxInputProps) {
+  export default function BoundingBoxInput({ onDownload, currentBbox, fileName }: BoundingBoxInputProps) {
     const [bbox, setBbox] = useState<[number, number, number, number]>(
       currentBbox || [0, 0, 0, 0]
     );
@@ -20,6 +21,24 @@ interface BoundingBoxInputProps {
       const newBbox = [...bbox] as [number, number, number, number];
       newBbox[index] = parseFloat(value) || 0;
       setBbox(newBbox);
+    };
+  
+    const handleDownload = () => {
+      if (!bbox) {
+        console.error('Bounding box is not set');
+        return;
+      }
+  
+      // Navigate to partial-download page with bbox coordinates and file name
+      const searchParams = new URLSearchParams({
+        north: bbox[3].toString(),
+        south: bbox[1].toString(),
+        east: bbox[2].toString(),
+        west: bbox[0].toString(),
+        fileName,
+        filePath: `/path/to/your/tiff/files/${fileName}` // Adjust this path as needed
+      });
+      window.location.href = `/partial-download?${searchParams.toString()}`;
     };
   
     return (
@@ -68,7 +87,7 @@ interface BoundingBoxInputProps {
           </div>
         </div>
         <button
-          onClick={() => onDownload(bbox)}
+          onClick={handleDownload}
           className="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
         >
           Download Selected Region

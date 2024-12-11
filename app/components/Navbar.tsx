@@ -28,7 +28,8 @@ export default function Navbar() {
                 href="/partial-download"
                 className="text-gray-600 hover:text-[#FF6F00] px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >
-                Partial Download
+                Partial
+                Download
               </Link>
               <Link
                 href="/visualizer"
@@ -47,6 +48,12 @@ export default function Navbar() {
                 className="text-gray-600 hover:text-[#FF6F00] px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >
                 cog tools
+              </Link>
+              <Link
+                href="/arithmetics"
+                className="text-gray-600 hover:text-[#FF6F00] px-3 py-2 rounded-md text-sm font-medium transition-colors"
+              >
+                Band Arithmetics
               </Link>
               <Link
                 href="/about"
