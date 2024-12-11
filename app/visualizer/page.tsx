@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import mapboxgl from 'mapbox-gl'
 import MapboxDraw from '@mapbox/mapbox-gl-draw'
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder'
@@ -17,6 +17,7 @@ import BandSelector from '../components/BandSelector'
 import BandControls from '../components/BandControls'
 import BoundingBoxInput from '../components/BoundingBoxInput'
 import BoundingBoxDownload from '../components/BoundingBoxDownload'
+import { loadShapefile } from '../utils/shapefileHandler';
 
 export default function Globe() {
   const mapContainer = useRef<HTMLDivElement>(null)
@@ -39,6 +40,7 @@ export default function Globe() {
   const [availableFiles, setAvailableFiles] = useState<any[]>([]);
   const [isApplied, setIsApplied] = useState(false);
   const [drawnBbox, setDrawnBbox] = useState<[number, number, number, number] | null>(null);
+  const [showBoundary, setShowBoundary] = useState(false);
 
   const {
     tiffData,
@@ -339,7 +341,7 @@ export default function Globe() {
       const currentZoom = map.current.getZoom();
       const currentCenter = map.current.getCenter();
       const currentPitch = map.current.getPitch();
-      const currentBearing = map.current.getBearing
+      const currentBearing = map.current.getBearing();
 
       // Remove existing layers and sources first
       if (map.current.getLayer('tiff-layer')) {
@@ -366,27 +368,6 @@ export default function Globe() {
           
           // Ensure map updates properly
           if (map.current) {
-            // Add the new source and layer
-            map.current.addSource('tiff-source', {
-              type: 'raster',
-              tiles: [selectedFile.url],
-              tileSize: 256,
-            });
-
-            map.current.addLayer({
-              id: 'tiff-layer',
-              type: 'raster',
-              source: 'tiff-source',
-              paint: {
-                'raster-opacity': 1,
-                'raster-hue-rotate': 0,
-                'raster-saturation': 0, // Set saturation to 0 for grayscale
-                'raster-contrast': 0,
-                'raster-brightness-min': 0,
-                'raster-brightness-max': 1,
-              },
-            });
-
             // Restore the previous view state
             map.current.setZoom(currentZoom);
             map.current.setCenter(currentCenter);
@@ -419,6 +400,67 @@ export default function Globe() {
     }
   };
 
+  const toggleBoundaryLayer = useCallback(async () => {
+    if (!map.current) return;
+
+    if (!showBoundary) {
+      try {
+        // Load shapefile using our existing utility
+        const geojsonData = await loadShapefile("C:\Users\cmrnn\Downloads\India_Country_Boundary.shp");
+
+        // Add source if it doesn't exist
+        if (!map.current.getSource('boundary-source')) {
+          map.current.addSource('boundary-source', {
+            type: 'geojson',
+            data: geojsonData
+          });
+        }
+
+        // Add fill layer if it doesn't exist
+        if (!map.current.getLayer('boundary-fill')) {
+          map.current.addLayer({
+            id: 'boundary-fill',
+            type: 'fill',
+            source: 'boundary-source',
+            paint: {
+              'fill-color': 'rgba(0, 0, 255, 0.1)',
+              'fill-outline-color': '#000'
+            }
+          });
+        }
+
+        // Add line layer if it doesn't exist
+        if (!map.current.getLayer('boundary-line')) {
+          map.current.addLayer({
+            id: 'boundary-line',
+            type: 'line',
+            source: 'boundary-source',
+            paint: {
+              'line-color': '#000',
+              'line-width': 2
+            }
+          });
+        }
+
+        setShowBoundary(true);
+      } catch (error) {
+        console.error('Error loading boundary:', error);
+      }
+    } else {
+      // Remove layers when toggled off
+      if (map.current.getLayer('boundary-line')) {
+        map.current.removeLayer('boundary-line');
+      }
+      if (map.current.getLayer('boundary-fill')) {
+        map.current.removeLayer('boundary-fill');
+      }
+      if (map.current.getSource('boundary-source')) {
+        map.current.removeSource('boundary-source');
+      }
+      setShowBoundary(false);
+    }
+  }, [showBoundary]);
+
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
@@ -427,8 +469,8 @@ export default function Globe() {
     const newMap = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/satellite-v9',
-      center: [0, 20],
-      zoom: 2,
+      center: [78.9629, 20.5937], // Centered on India
+      zoom: 4,
       projection: 'mercator',
       renderWorldCopies: true,
       preserveDrawingBuffer: true
@@ -639,11 +681,18 @@ export default function Globe() {
             onToggleProjection={toggleProjection}
           />
           <div ref={mapContainer} className="w-full h-full" />
-          {/* <div className="absolute top-4 right-4">
-            <BoundingBoxDownload onDownload={(bbox) => {
-              console.log('Downloading region with bbox:', bbox)
-            }} />
-          </div> */}
+          <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
+            <button
+              onClick={toggleBoundaryLayer}
+              className={`px-4 py-2 rounded ${
+                showBoundary 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-200 text-gray-700'
+              } hover:opacity-80 transition-colors`}
+            >
+              {showBoundary ? 'Hide Boundary' : 'Show Boundary'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
