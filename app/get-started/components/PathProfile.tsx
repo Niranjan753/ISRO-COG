@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 
-// Dynamically import Plotly with SSR disabled
 const PlotlyModule = dynamic(
   () => import('plotly.js-dist').then((mod) => mod.default),
   { ssr: false }
@@ -17,11 +16,10 @@ interface Point {
 export default function PathProfile() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [ctx, setCtx] = useState<CanvasRenderingContext2D | null>(null)
-  const [img] = useState<HTMLImageElement>(new window.Image())
+  const [img, setImg] = useState<HTMLImageElement | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [drawingEnabled, setDrawingEnabled] = useState(false)
   const [lineData, setLineData] = useState<Point[]>([])
-  const [linePath, setLinePath] = useState<Point[]>([])
   const [statusMessage, setStatusMessage] = useState('')
   const [currentFile, setCurrentFile] = useState<string>('')
   const [plotly, setPlotly] = useState<any>(null)
@@ -31,10 +29,7 @@ export default function PathProfile() {
       const context = canvasRef.current.getContext('2d')
       setCtx(context)
     }
-  }, [])
 
-  // Load Plotly on component mount
-  useEffect(() => {
     import('plotly.js-dist').then((mod) => {
       setPlotly(mod.default)
     })
@@ -62,32 +57,21 @@ export default function PathProfile() {
         body: formData
       })
 
-      const contentType = response.headers.get('content-type')
-      let data
-      
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json()
-      } else {
-        throw new Error('Invalid response format from server')
-      }
+      const data = await response.json()
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to upload file')
       }
-
-      console.log('Server response:', data)
 
       if (!data.filePath) {
         throw new Error('No file path received')
       }
 
       const fullPath = window.location.origin + data.filePath
-      console.log('Loading image from:', fullPath)
       setCurrentFile(data.originalPath)
       
       const newImg = new Image()
       newImg.onload = () => {
-        console.log('Image loaded:', newImg.width, 'x', newImg.height)
         if (canvasRef.current && ctx) {
           canvasRef.current.width = newImg.width
           canvasRef.current.height = newImg.height
@@ -97,23 +81,20 @@ export default function PathProfile() {
           
           setStatusMessage('File uploaded and displayed successfully')
           setDrawingEnabled(true)
+          setImg(newImg)
         } else {
-          console.error('Canvas or context not available')
           setStatusMessage('Failed to initialize canvas')
         }
       }
 
-      newImg.onerror = (error) => {
-        console.error('Image load error:', error)
+      newImg.onerror = () => {
         setStatusMessage('Failed to load the image')
         setDrawingEnabled(false)
       }
 
       newImg.src = fullPath
-      img.src = fullPath
 
     } catch (error) {
-      console.error('Upload error:', error)
       setStatusMessage(error instanceof Error ? error.message : 'Upload failed. Please try again.')
       setDrawingEnabled(false)
     }
@@ -162,7 +143,6 @@ export default function PathProfile() {
         })
       }
     } catch (error) {
-      console.error('Error fetching profile data:', error)
       setStatusMessage(error instanceof Error ? error.message : 'Failed to get profile data')
     }
   }
@@ -189,22 +169,20 @@ export default function PathProfile() {
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
     setLineData([{ x, y }])
-    setLinePath([{ x, y }])
   }
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !drawingEnabled || !ctx) return
+    if (!isDrawing || !drawingEnabled || !ctx || !img) return
     const rect = canvasRef.current!.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
     
-    if (img.complete) {
-      ctx.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height)
-      ctx.drawImage(img, 0, 0)
-    }
+    ctx.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height)
+    ctx.drawImage(img, 0, 0)
     
-    setLineData(prev => [...prev, { x, y }])
-    drawLine([...lineData, { x, y }])
+    const newLineData = [...lineData, { x, y }]
+    setLineData(newLineData)
+    drawLine(newLineData)
   }
 
   const endDrawing = () => {
@@ -235,13 +213,12 @@ export default function PathProfile() {
       </div>
       <canvas 
         ref={canvasRef}
-        width="100"
-        height="85"
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={endDrawing}
         onMouseLeave={endDrawing}
         className="border border-gray-300"
+        style={{ maxWidth: '100%', height: 'auto' }}
       />
       <div id="plot" className="mt-4">
         {!plotly && <p>Loading plot...</p>}
