@@ -53,7 +53,7 @@ export function useTiffProcessing(
       const width = image.getWidth()
       const height = image.getHeight()
       const rasterData = await image.readRasters()
-      const data = rasterData[0] as Float32Array | Uint16Array | Uint8Array
+      const data = rasterData[0] as  Int16Array 
       
       const bbox = image.getBoundingBox()
       

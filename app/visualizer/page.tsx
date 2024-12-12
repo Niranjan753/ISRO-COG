@@ -73,7 +73,13 @@ export default function Globe() {
   useEffect(() => {
     if (!map.current || drawRef.current) return;
 
-    // Initialize draw control only after map is loaded
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current!,
+      style: 'mapbox://styles/mapbox/satellite-streets-v12',
+      center: [0, 0],
+      zoom: 2,
+      interactive: true
+    });
     map.current.once('load', () => {
       drawRef.current = new MapboxDraw({
         displayControlsDefault: false,
@@ -313,7 +319,7 @@ export default function Globe() {
           }]
         },
         center: [78.9629, 20.5937], // Centered on India
-        zoom: 4,
+        zoom: 8,
         projection: mapState.isMercator ? 'mercator' : 'globe',
         renderWorldCopies: true,
         preserveDrawingBuffer: true
@@ -724,7 +730,7 @@ export default function Globe() {
     <div className="flex flex-col h-screen bg-white overflow-hidden">
       <Navbar />
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-1/3 p-4 overflow-y-auto">
+        <div className="w-1/3 p-4 mt-6 overflow-y-auto">
           <BandSelector
             bands={uniqueBands}
             selectedBand={selectedBand}
@@ -888,7 +894,7 @@ export default function Globe() {
           </div>
         </div>
 
-        <div className="w-2/3 t-2/3 relative overflow-hidden">
+        <div className="w-2/3 t-2/3 relative mt-20 overflow-hidden">
           <MapControls
             isGlobeView={mapState.isGlobeView}
             isMercator={mapState.isMercator}
@@ -896,7 +902,7 @@ export default function Globe() {
             onToggleProjection={toggleProjection}
           />
           <div ref={mapContainer} className="w-full h-full" />
-          <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
+          {/* <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
             <button
               onClick={toggleBoundaryLayer}
               className={`px-4 py-2 rounded ${
@@ -906,8 +912,8 @@ export default function Globe() {
               } hover:opacity-80 transition-colors`}
             >
               {showBoundary ? 'Hide Boundary' : 'Show Boundary'}
-            </button>
-          </div>
+            </button> */}
+          {/* </div> */}
         </div>
       </div>
     </div>
