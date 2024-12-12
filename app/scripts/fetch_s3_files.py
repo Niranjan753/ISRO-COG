@@ -1,94 +1,99 @@
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
 import boto3
-import json
 import os
-from datetime import datetime
-from dotenv import load_dotenv
+import logging
+from botocore.exceptions import ClientError
+import tempfile
 
-# Load environment variables
-load_dotenv()
+app = Flask(__name__)
+CORS(app)
 
-# AWS Configuration
-s3 = boto3.client(
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Configure S3 client
+s3_client = boto3.client(
     's3',
-    region_name='ap-south-1',
-    aws_access_key_id='AKIA3LET6GUZAKOIAOOZ',
-    aws_secret_access_key='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'
+    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+    region_name=os.getenv('AWS_REGION', 'ap-south-1')
 )
 
-def fetch_and_save_metadata():
+BUCKET_NAME = os.getenv('S3_BUCKET_NAME')
+
+@app.route('/list_s3_files', methods=['GET'])
+def list_s3_files():
     try:
-        print("Starting to fetch S3 files...")
-        files_data = []
-        bucket_name = 'cog-s3-data'  # Hardcoded bucket name for COG files
-            
-        response = s3.list_objects_v2(
-            Bucket=bucket_name
-        )
+        # List all objects in the bucket
+        paginator = s3_client.get_paginator('list_objects_v2')
+        files = []
         
-        if 'Contents' in response:
-            for item in response['Contents']:
-                filename = item['Key'].split('/')[-1]
-                if not filename.endswith('.tif'):  # Look for TIFF/COG files
-                    continue
-                    
+        for page in paginator.paginate(Bucket=BUCKET_NAME):
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    files.append({
+                        'Key': obj['Key'],
+                        'LastModified': obj['LastModified'].isoformat(),
+                        'Size': obj['Size']
+                    })
+        
+        return jsonify({
+            'files': files
+        })
+        
+    except ClientError as e:
+        logger.error(f"Error listing S3 files: {e}")
+        return jsonify({
+            'error': str(e)
+        }), 500
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return jsonify({
+            'error': 'An unexpected error occurred'
+        }), 500
+
+@app.route('/download_s3_file', methods=['POST'])
+def download_s3_file():
+    try:
+        data = request.get_json()
+        if not data or 'key' not in data:
+            return jsonify({'error': 'No file key provided'}), 400
+            
+        file_key = data['key']
+        
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            try:
+                # Download the file from S3
+                s3_client.download_fileobj(BUCKET_NAME, file_key, temp_file)
+                temp_file_path = temp_file.name
+                
+                # Send the file
+                return send_file(
+                    temp_file_path,
+                    as_attachment=True,
+                    download_name=file_key.split('/')[-1],
+                    mimetype='application/octet-stream'
+                )
+            finally:
+                # Clean up the temporary file
                 try:
-                    # Split the filename and handle cases with different formats
-                    parts = filename.split('_')
-                    if len(parts) >= 5:  # Make sure we have enough parts
-                        level = parts[1]
-                        band = parts[2]
-                        date = parts[3]
-                        time = parts[4].replace('.tif', '')  # Remove file extension
-                        time = time[:2] + ":" + time[2:]  # Format time with colon
-                        
-                        file_info = {
-                            'filename': filename,
-                            'level': level,
-                            'band': band,
-                            'date': date,
-                            'time': time,
-                            'size': item['Size'],
-                            'url': f"https://{bucket_name}.s3.{os.getenv('AWS_REGION', 'ap-south-1')}.amazonaws.com/{item['Key']}"
-                        }
-                        files_data.append(file_info)
-                        print(f"Found file: {filename}")
-                    else:
-                        print(f"Skipping file with unexpected format: {filename}")
-                        
-                except Exception as e:
-                    print(f"Error processing file {filename}: {str(e)}")
+                    os.unlink(temp_file_path)
+                except:
+                    pass
                     
-        # Save the metadata to a JSON file
-        output_file = os.path.join(os.getcwd(), 'public', 's3_files.json')
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        
-        with open(output_file, 'w') as f:
-            json.dump({
-                'files': files_data,
-                'lastUpdated': datetime.now().isoformat()
-            }, f, indent=2)
-            
-        print(f"Metadata saved to {output_file}")
-        print(f"Found {len(files_data)} files")
-        
+    except ClientError as e:
+        logger.error(f"Error downloading file from S3: {e}")
+        return jsonify({
+            'error': f"Error downloading file: {str(e)}"
+        }), 500
     except Exception as e:
-        print(f"Error fetching S3 files: {str(e)}")
-        raise
+        logger.error(f"Unexpected error: {e}")
+        return jsonify({
+            'error': f"An unexpected error occurred: {str(e)}"
+        }), 500
 
-def get_files_by_level_and_time(level, time):
-    try:
-        with open('public/s3_files.json', 'r') as f:
-            data = json.load(f)
-            
-        filtered_files = [
-            file for file in data['files']
-            if file['level'] == level and file['time'] == time
-        ]
-        
-        return filtered_files
-    except Exception as e:
-        print(f"Error getting files: {str(e)}")
-        return []
-
-if __name__ == "__main__":
-    fetch_and_save_metadata()
+if __name__ == '__main__':
+    app.run(port=5000, debug=True)

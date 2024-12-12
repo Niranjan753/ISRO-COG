@@ -1,51 +1,51 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState } from 'react';
 import Navbar from '../components/Navbar';
 import axios from 'axios';
 
-type DisplayMode = 'single' | 'combine';
-type RGBMode = 'natural' | 'false' | 'custom';
-
-interface FileInfo {
+type FileInfo = {
   name: string;
   file: File;
   preview?: string;
+};
+
+interface BandThresholds {
+  min: number;
+  max: number;
 }
 
-interface BandSelection {
-  R: number;
-  G: number;
-  B: number;
+interface ThresholdState {
+  R: BandThresholds;
+  G: BandThresholds;
+  B: BandThresholds;
 }
 
-const API_URL = 'http://127.0.0.1:5000';
+const API_URL = 'http://127.0.0.1:5001';  // Note: Using port 5001 for RGB processor
 
 const RGBPage = () => {
-  // File states
-  const [file1, setFile1] = useState<FileInfo | null>(null);
-  const [file2, setFile2] = useState<FileInfo | null>(null);
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('single');
-  const [rgbMode, setRGBMode] = useState<RGBMode>('natural');
+  // File state
+  const [file, setFile] = useState<FileInfo | null>(null);
   
-  // Band selection states
-  const [bandSelection, setBandSelection] = useState<BandSelection>({
-    R: 4, // Default NIR band
-    G: 3, // Default Red band
-    B: 2  // Default Green band
+  // Threshold states
+  const [thresholds, setThresholds] = useState<ThresholdState>({
+    R: { min: 0, max: 255 },
+    G: { min: 0, max: 255 },
+    B: { min: 0, max: 255 }
   });
-  
-  // Display states
-  const [resultImage, setResultImage] = useState<string>('');
-  const [error, setError] = useState<string>('');
-  const [loading, setLoading] = useState(false);
   
   // Image adjustment states
   const [brightness, setBrightness] = useState<number>(0);
   const [contrast, setContrast] = useState<number>(0);
   const [saturation, setSaturation] = useState<number>(0);
+  
+  // Display states
+  const [resultImage, setResultImage] = useState<string>('');
+  const [error, setError] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [bandStats, setBandStats] = useState<any>(null);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, fileNumber: 1 | 2) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     
     const file = e.target.files[0];
@@ -54,119 +54,69 @@ const RGBPage = () => {
       return;
     }
 
-    const fileInfo: FileInfo = {
+    setFile({
       name: file.name,
       file: file
-    };
-
-    if (fileNumber === 1) {
-      setFile1(fileInfo);
-      if (displayMode === 'single') {
-        await processRGBDisplay(fileInfo);
-      }
-    } else {
-      setFile2(fileInfo);
-    }
-    setError('');
+    });
+    
+    // Process the file immediately
+    await processRGBImage(file);
   };
 
-  const processRGBDisplay = async (fileInfo: FileInfo) => {
+  const processRGBImage = async (imageFile: File) => {
     setLoading(true);
     setError('');
 
     try {
       const formData = new FormData();
-      formData.append('file', fileInfo.file);
-      formData.append('mode', rgbMode);
+      formData.append('file', imageFile);
       
-      // Only append band selection if in custom mode
-      if (rgbMode === 'custom') {
-        formData.append('r_band', bandSelection.R.toString());
-        formData.append('g_band', bandSelection.G.toString());
-        formData.append('b_band', bandSelection.B.toString());
-      }
+      // Add thresholds
+      formData.append('r_min', thresholds.R.min.toString());
+      formData.append('r_max', thresholds.R.max.toString());
+      formData.append('g_min', thresholds.G.min.toString());
+      formData.append('g_max', thresholds.G.max.toString());
+      formData.append('b_min', thresholds.B.min.toString());
+      formData.append('b_max', thresholds.B.max.toString());
       
+      // Add adjustments
       formData.append('brightness', brightness.toString());
       formData.append('contrast', contrast.toString());
       formData.append('saturation', saturation.toString());
 
-      console.log('Sending request with:', {
-        mode: rgbMode,
-        bandSelection: rgbMode === 'custom' ? bandSelection : 'using default bands',
-        adjustments: { brightness, contrast, saturation }
-      });
-
-      const response = await axios.post(`${API_URL}/rgb_display`, formData, {
+      const response = await axios.post(`${API_URL}/rgb_process`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        validateStatus: function (status) {
-          return status < 500; // Resolve only if the status code is less than 500
-        }
       });
 
-      if (response.status !== 200) {
-        throw new Error(response.data.error || 'Failed to process image');
-      }
-      
       if (response.data.result_image) {
         setResultImage(`${API_URL}/uploads/${response.data.result_image}`);
-        console.log('Band info:', response.data.bands_info);
+        if (response.data.bands_info?.band_statistics) {
+          setBandStats(response.data.bands_info.band_statistics);
+        }
       }
     } catch (err: any) {
-      console.error('Error processing RGB display:', err);
+      console.error('Error processing RGB image:', err);
       setError(err.response?.data?.error || err.message || 'Error processing file');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCombineFiles = async () => {
-    if (!file1 || !file2) {
-      setError('Please upload both files');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    const formData = new FormData();
-    formData.append('file1', file1.file);
-    formData.append('file2', file2.file);
-    formData.append('mode', rgbMode);
-    formData.append('r_band', bandSelection.R.toString());
-    formData.append('g_band', bandSelection.G.toString());
-    formData.append('b_band', bandSelection.B.toString());
-    formData.append('brightness', brightness.toString());
-    formData.append('contrast', contrast.toString());
-    formData.append('saturation', saturation.toString());
-
-    try {
-      const response = await axios.post(`${API_URL}/rgb_combine`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      
-      if (response.data.result_image) {
-        setResultImage(`${API_URL}/uploads/${response.data.result_image}`);
+  const handleThresholdChange = (
+    band: keyof ThresholdState,
+    type: 'min' | 'max',
+    value: number
+  ) => {
+    setThresholds(prev => ({
+      ...prev,
+      [band]: {
+        ...prev[band],
+        [type]: value
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Error combining files. Please try again.');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    }));
   };
-
-  // Update display when mode or adjustments change
-  useEffect(() => {
-    if (file1 && displayMode === 'single') {
-      processRGBDisplay(file1);
-    } else if (file1 && file2 && displayMode === 'combine') {
-      handleCombineFiles();
-    }
-  }, [rgbMode, bandSelection, brightness, contrast, saturation]);
 
   return (
     <div className="flex flex-col h-screen">
@@ -175,133 +125,54 @@ const RGBPage = () => {
       <main className="flex-1 flex mt-16">
         <div className="w-64 bg-gray-100 p-4">
           <div className="space-y-4">
-            {/* Display Mode Selection */}
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">Display Mode</h2>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setDisplayMode('single')}
-                  className={`flex-1 p-2 rounded ${
-                    displayMode === 'single'
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-200 text-gray-700'
-                  }`}
-                >
-                  Single File
-                </button>
-                <button
-                  onClick={() => setDisplayMode('combine')}
-                  className={`flex-1 p-2 rounded ${
-                    displayMode === 'combine'
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-200 text-gray-700'
-                  }`}
-                >
-                  Combine Files
-                </button>
-              </div>
-            </div>
-
             {/* File Upload Section */}
             <div className="mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">Upload TIFF Files</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    First TIFF File
-                  </label>
-                  <input
-                    type="file"
-                    accept=".tif,.tiff"
-                    onChange={(e) => handleFileUpload(e, 1)}
-                    className="w-full text-gray-900"
-                    disabled={loading}
-                  />
-                  {file1 && (
-                    <p className="mt-1 text-sm text-gray-500">
-                      Selected: {file1.name}
-                    </p>
-                  )}
-                </div>
-
-                {displayMode === 'combine' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Second TIFF File
-                    </label>
-                    <input
-                      type="file"
-                      accept=".tif,.tiff"
-                      onChange={(e) => handleFileUpload(e, 2)}
-                      className="w-full text-gray-900"
-                      disabled={loading}
-                    />
-                    {file2 && (
-                      <p className="mt-1 text-sm text-gray-500">
-                        Selected: {file2.name}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* RGB Mode Selection */}
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">RGB Mode</h2>
-              <select
-                value={rgbMode}
-                onChange={(e) => setRGBMode(e.target.value as RGBMode)}
-                className="w-full p-2 rounded border text-gray-700"
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">Upload TIFF File</h2>
+              <input
+                type="file"
+                accept=".tif,.tiff"
+                onChange={handleFileUpload}
+                className="w-full text-gray-900"
                 disabled={loading}
-              >
-                <option value="natural">Natural Color</option>
-                <option value="false">False Color</option>
-                <option value="custom">Custom Bands</option>
-              </select>
+              />
+              {file && (
+                <p className="mt-1 text-sm text-gray-500">
+                  Selected: {file.name}
+                </p>
+              )}
             </div>
 
-            {/* Custom Band Selection */}
-            {rgbMode === 'custom' && (
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold text-gray-900 mb-2">Band Selection</h2>
-                <div className="space-y-2">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Red Band</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="12"
-                      value={bandSelection.R}
-                      onChange={(e) => setBandSelection(prev => ({ ...prev, R: parseInt(e.target.value) }))}
-                      className="w-full p-2 rounded border text-gray-700"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Green Band</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="12"
-                      value={bandSelection.G}
-                      onChange={(e) => setBandSelection(prev => ({ ...prev, G: parseInt(e.target.value) }))}
-                      className="w-full p-2 rounded border text-gray-700"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Blue Band</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="12"
-                      value={bandSelection.B}
-                      onChange={(e) => setBandSelection(prev => ({ ...prev, B: parseInt(e.target.value) }))}
-                      className="w-full p-2 rounded border text-gray-700"
-                    />
+            {/* Band Thresholds */}
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">Band Thresholds</h2>
+              {(['R', 'G', 'B'] as const).map(band => (
+                <div key={band} className="mb-3">
+                  <h3 className="font-medium text-gray-700">{band} Band</h3>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-sm text-gray-600">Min Value</label>
+                      <input
+                        type="number"
+                        value={thresholds[band].min}
+                        onChange={(e) => handleThresholdChange(band, 'min', Number(e.target.value))}
+                        className="w-full p-1 border rounded"
+                        disabled={loading}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-600">Max Value</label>
+                      <input
+                        type="number"
+                        value={thresholds[band].max}
+                        onChange={(e) => handleThresholdChange(band, 'max', Number(e.target.value))}
+                        className="w-full p-1 border rounded"
+                        disabled={loading}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
 
             {/* Image Adjustments */}
             <div className="mb-4">
@@ -318,6 +189,7 @@ const RGBPage = () => {
                     value={brightness}
                     onChange={(e) => setBrightness(parseInt(e.target.value))}
                     className="w-full"
+                    disabled={loading}
                   />
                 </div>
                 <div>
@@ -331,6 +203,7 @@ const RGBPage = () => {
                     value={contrast}
                     onChange={(e) => setContrast(parseInt(e.target.value))}
                     className="w-full"
+                    disabled={loading}
                   />
                 </div>
                 <div>
@@ -344,10 +217,28 @@ const RGBPage = () => {
                     value={saturation}
                     onChange={(e) => setSaturation(parseInt(e.target.value))}
                     className="w-full"
+                    disabled={loading}
                   />
                 </div>
               </div>
             </div>
+
+            {/* Band Statistics */}
+            {bandStats && (
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">Band Statistics</h2>
+                {Object.entries(bandStats).map(([band, stats]: [string, any]) => (
+                  <div key={band} className="mb-2">
+                    <h3 className="font-medium text-gray-700 capitalize">{band}</h3>
+                    <div className="text-sm text-gray-600">
+                      <p>Min: {stats.min.toFixed(2)}</p>
+                      <p>Max: {stats.max.toFixed(2)}</p>
+                      <p>Mean: {stats.mean.toFixed(2)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {error && (
               <div className="mb-4 text-red-500 text-sm">
@@ -369,9 +260,7 @@ const RGBPage = () => {
               />
             ) : (
               <div className="text-gray-500">
-                {displayMode === 'single' 
-                  ? 'Upload a TIFF file to see RGB display'
-                  : 'Upload two TIFF files to see combined RGB display'}
+                Upload a TIFF file to see RGB visualization
               </div>
             )}
           </div>
