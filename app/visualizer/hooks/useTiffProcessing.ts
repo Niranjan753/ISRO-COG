@@ -115,6 +115,18 @@ export function useTiffProcessing(
           ]
         })
 
+        const moveDrawLayersToTop = () => {
+          const layers = map.getStyle().layers;
+          const drawLayers = layers.filter(layer => 
+            layer.id.includes('gl-draw') || 
+            layer.id.includes('mapbox-gl-draw')
+          );
+          
+          drawLayers.forEach(layer => {
+            map.moveLayer(layer.id);
+          });
+        };
+
         map.addLayer({
           id: 'tiff-layer',
           type: 'raster',
@@ -122,7 +134,9 @@ export function useTiffProcessing(
           paint: {
             'raster-opacity': 0.85
           }
-        })
+        });
+
+        moveDrawLayersToTop();
       } else {
         const source = map.getSource('tiff-layer') as mapboxgl.ImageSource
         source.updateImage({

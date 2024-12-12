@@ -174,8 +174,14 @@ export default function Globe() {
     }
   };
 
-  const handleTiffUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleFileChange = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach(file => {
+      processFile(file);
+    });
+  }
+
+  const processFile = async (file: File) => {
     if (!file || !map.current) return
     
     await processTiff(file, map.current)
@@ -288,7 +294,24 @@ export default function Globe() {
       // Create a new map instance with current projection
       const newMap = new mapboxgl.Map({
         container: mapContainer.current!,
-        style: 'mapbox://styles/mapbox/light-v11',
+        style: {
+          version: 8,
+          sources: {
+            'osm': {
+              type: 'raster',
+              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+              tileSize: 256,
+              attribution: ' OpenStreetMap contributors'
+            }
+          },
+          layers: [{
+            id: 'osm-tiles',
+            type: 'raster',
+            source: 'osm',
+            minzoom: 0,
+            maxzoom: 19
+          }]
+        },
         center: [78.9629, 20.5937], // Centered on India
         zoom: 4,
         projection: mapState.isMercator ? 'mercator' : 'globe',
@@ -407,7 +430,24 @@ export default function Globe() {
 
             // Force style reload if needed
             if (!map.current.getStyle()) {
-              map.current.setStyle('mapbox://styles/mapbox/light-v11');
+              map.current.setStyle({
+                version: 8,
+                sources: {
+                  'osm': {
+                    type: 'raster',
+                    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                    tileSize: 256,
+                    attribution: ' OpenStreetMap contributors'
+                  }
+                },
+                layers: [{
+                  id: 'osm-tiles',
+                  type: 'raster',
+                  source: 'osm',
+                  minzoom: 0,
+                  maxzoom: 19
+                }]
+              });
               await new Promise<void>((resolve) => {
                 map.current!.once('style.load', () => resolve());
               });
@@ -553,69 +593,78 @@ export default function Globe() {
 
     const newMap = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/light-v11',
+      style: {
+        version: 8,
+        sources: {
+          'osm': {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: ' OpenStreetMap contributors'
+          }
+        },
+        layers: [{
+          id: 'osm-tiles',
+          type: 'raster',
+          source: 'osm',
+          minzoom: 0,
+          maxzoom: 19
+        }]
+      },
       center: [78.9629, 20.5937], // Centered on India
       zoom: 4,
       projection: 'globe',
       renderWorldCopies: true,
-      preserveDrawingBuffer: true,
-      customAttribution: 'EPSG:4326 - WGS 84'
+      preserveDrawingBuffer: true
     });
 
     newMap.on('load', () => {
       handleMapLoad(newMap);
 
-      // Wait for style to be fully loaded
-      newMap.once('style.load', () => {
-        // Get all layers
+      // Function to manage layer order
+      const manageLayerOrder = () => {
         const layers = newMap.getStyle().layers;
         
-        // Update polygon style
+        // Move TIFF layer if it exists
+        if (newMap.getLayer('tiff-layer')) {
+          newMap.moveLayer('tiff-layer');
+        }
+
+        // Move draw layers to the very top
+        layers.forEach(layer => {
+          if (layer.id.includes('gl-draw') || layer.id.includes('mapbox-gl-draw')) {
+            newMap.moveLayer(layer.id);
+          }
+        });
+      };
+
+      // Wait for style to be fully loaded
+      newMap.once('style.load', () => {
+        // Update polygon style for draw tools
+        const layers = newMap.getStyle().layers;
         layers.forEach(layer => {
           if (layer.id.includes('gl-draw-polygon')) {
-            newMap.setPaintProperty(layer.id, 'fill-color', '#ff0000'); // Red fill
-            newMap.setPaintProperty(layer.id, 'fill-opacity', 2); // 40% opacity
-            newMap.setPaintProperty(layer.id, 'fill-outline-color', '#000000'); // Black outline
-            newMap.setPaintProperty(layer.id, 'line-width', 2); // 2px outline width
+            newMap.setPaintProperty(layer.id, 'fill-color', '#ff0000');
+            newMap.setPaintProperty(layer.id, 'fill-opacity', 0.4);
+            newMap.setPaintProperty(layer.id, 'fill-outline-color', '#000000');
+            newMap.setPaintProperty(layer.id, 'line-width', 2);
           }
         });
 
-        // Set all background and fill layers to white
-        layers.forEach(layer => {
-          if (layer.type === 'background' || layer.type === 'fill') {
-            newMap.setPaintProperty(layer.id, `${layer.type}-color`, '#ffffff');
-          }
-          // Set all line layers to black
-          if (layer.type === 'line') {
-            newMap.setPaintProperty(layer.id, 'line-color', '#000000');
-            newMap.setPaintProperty(layer.id, 'line-width', 1);
-          }
-          // Remove any symbol or icon layers for cleaner look
-          if (layer.type === 'symbol' || layer.type === 'icon') {
-            newMap.removeLayer(layer.id);
-          }
-        });
-
-        // Set light settings for clean look
-        newMap.setLight({
-          intensity: 0.7,
-          color: '#ffffff',
-          anchor: 'map'
-        });
-
-        // Set fog settings for clean white look
+        // Set fog settings for globe view
         newMap.setFog({
-          'horizon-blend': 0.2,
+          'horizon-blend': 0.1,
           'star-intensity': 0,
-          'space-color': '#ffffff',
-          color: '#ffffff',
-          'high-color': '#ffffff'
+          'space-color': '#ffffff'
         });
 
-        // Remove terrain and unnecessary layers
+        // Remove terrain if present
         if (newMap.getLayer('hillshade')) newMap.removeLayer('hillshade');
         if (newMap.getLayer('terrain')) newMap.removeLayer('terrain');
       });
+
+      // Add TIFF overlay logic here
+      newMap.on('sourcedata', manageLayerOrder);
     });
 
     newMap.addControl(new mapboxgl.NavigationControl());
@@ -694,9 +743,10 @@ export default function Globe() {
               <h2 className="text-xl font-semibold mb-4 text-gray-900">Upload TIFF</h2>
               <input
                 type="file"
+                multiple
                 accept=".tif,.tiff"
-                onChange={handleTiffUpload}
-                className="w-full p-2 border border-gray-200 text-gray-700 rounded"
+                onChange={(e) => handleFileChange(e.target.files)}
+                className="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
               />
               {fileName && (
                 <p className="mt-2 text-sm text-gray-600">
