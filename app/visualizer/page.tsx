@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, Suspense } from 'react'
 import mapboxgl from 'mapbox-gl'
 import MapboxDraw from '@mapbox/mapbox-gl-draw'
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder'
@@ -19,7 +19,7 @@ import BoundingBoxInput from '../components/BoundingBoxInput'
 import BoundingBoxDownload from '../components/BoundingBoxDownload'
 import { loadShapefile } from '../utils/shapefileHandler';
 
-export default function Globe() {
+function Globe() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const drawRef = useRef<MapboxDraw | null>(null)
@@ -918,4 +918,12 @@ export default function Globe() {
       </div>
     </div>
   )
+}
+
+export default function VisualizerPage() {
+  return (
+    <Suspense fallback={<div>Loading visualizer...</div>}>
+      <Globe />
+    </Suspense>
+  );
 }

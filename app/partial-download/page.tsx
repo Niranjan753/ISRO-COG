@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Navbar from '../components/Navbar';
 
@@ -19,7 +19,7 @@ interface ProcessingStatus {
   };
 }
 
-export default function PartialDownload() {
+function PartialDownloadContent() {
   const searchParams = useSearchParams();
   const [formData, setFormData] = useState<FormData>({
     north: searchParams.get('north') || '',
@@ -331,5 +331,22 @@ export default function PartialDownload() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function PartialDownload() {
+  return (
+    <Suspense fallback={
+      <>
+        <Navbar />
+        <div className="min-h-screen bg-gray-100 py-12 mt-8 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6">
+            <p>Loading...</p>
+          </div>
+        </div>
+      </>
+    }>
+      <PartialDownloadContent />
+    </Suspense>
   );
 }
